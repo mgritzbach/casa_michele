@@ -35,7 +35,8 @@ import { supabase } from './services/supabase';
 import { fetchCocktailsFromSheet } from './services/sheet';
 import { Button, BottomSheet, Toast, Badge } from './components/UI';
 
-const VERSION = "v1.1.4 (Supabase)";
+const VERSION = "v1.2.0 (Supabase)";
+const SESSION_STORAGE_KEY = 'casa_michele_session_v1';
 
 const INGREDIENT_CATEGORIES = [
   'Spirit',
@@ -125,6 +126,17 @@ const App: React.FC = () => {
 
   // Initial Data Load
   useEffect(() => {
+    const savedRaw = localStorage.getItem(SESSION_STORAGE_KEY);
+    if (savedRaw) {
+      try {
+        const saved = JSON.parse(savedRaw);
+        setSession({ eventCode: saved.eventCode, isBartender: saved.isBartender, guestName: saved.guestName, guestPhone: saved.guestPhone });
+        setView(saved.role === 'bartender' ? 'bartender' : 'guest');
+      } catch (e) {
+        localStorage.removeItem(SESSION_STORAGE_KEY);
+      }
+    }
+
     // Load cocktails from local storage first for speed, then refresh
     const saved = localStorage.getItem('ceb_cocktails_v5');
     if (saved) {
@@ -270,9 +282,21 @@ const App: React.FC = () => {
   const handleJoin = (role: 'bartender' | 'guest', code: string, guestName?: string, guestPhone?: string) => {
     if (!code) return;
     setSession({ eventCode: code.toUpperCase(), isBartender: role === 'bartender', guestName, guestPhone });
+    const sessionToSave = { role, eventCode: code.toUpperCase(), isBartender: role === 'bartender', guestName, guestPhone };
+    localStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify(sessionToSave));
     setView(role);
     setNotifiedOrders(new Set());
     setHasInitializedOrders(false);
+  };
+
+  const handleExit = () => {
+    localStorage.removeItem(SESSION_STORAGE_KEY);
+    setSession(null);
+    setView('landing');
+    setOrders([]);
+    setAvailability({});
+    setHasInitializedOrders(false);
+    setNotifiedOrders(new Set());
   };
 
   const toggleAvailability = async (ingredient: string) => {
@@ -391,6 +415,13 @@ const App: React.FC = () => {
     return Array.from(set).sort();
   }, [cocktails]);
 
+  const copyShoppingList = () => {
+    const outOfStock = allIngredients.filter(i => availability[i]);
+    if (outOfStock.length === 0) { showToast('Nothing is out of stock'); return; }
+    const text = outOfStock.map(i => `• ${i}`).join('\n');
+    navigator.clipboard.writeText(text).then(() => showToast(`Copied ${outOfStock.length} items`));
+  };
+
   const filteredIngredients = useMemo(() => {
     return allIngredients
       .filter(ing => ing.toLowerCase().includes(searchQuery.toLowerCase()))
@@ -499,7 +530,7 @@ const App: React.FC = () => {
                 <h1 className="text-[10px] font-black text-zinc-500 uppercase tracking-widest">Live: {session.eventCode}</h1>
               </div>
             </div>
-            <button onClick={() => setSession(null)} className="px-3 py-1.5 bg-zinc-900 rounded-xl text-zinc-400 font-bold text-xs">Exit</button>
+            <button onClick={handleExit} className="px-3 py-1.5 bg-zinc-900 rounded-xl text-zinc-400 font-bold text-xs">Exit</button>
           </header>
 
           {lastOrder && (
@@ -807,7 +838,7 @@ const App: React.FC = () => {
               <button onClick={refreshData} className="p-2.5 rounded-xl bg-zinc-800 text-zinc-400">
                 <RefreshCw size={18} className={isRefreshing ? 'animate-spin' : ''} />
               </button>
-              <button onClick={() => setSession(null)} className="p-2.5 rounded-xl bg-zinc-800 text-zinc-400">
+              <button onClick={handleExit} className="p-2.5 rounded-xl bg-zinc-800 text-zinc-400">
                 <X size={18} />
               </button>
             </div>
@@ -861,6 +892,15 @@ const App: React.FC = () => {
                     >
                       Out Only
                     </button>
+                    {Object.values(availability).some(Boolean) && (
+                      <button
+                        onClick={copyShoppingList}
+                        className="flex items-center gap-1.5 px-3 py-1.5 bg-red-500/10 border border-red-500/20 rounded-xl text-red-400 text-xs font-bold"
+                      >
+                        <ClipboardList size={13} />
+                        Copy Shopping List ({Object.values(availability).filter(Boolean).length})
+                      </button>
+                    )}
                     {INGREDIENT_CATEGORIES.map(cat => (
                       <button
                         key={cat}
