@@ -17,6 +17,12 @@ buildscript {
 
 apply from: "variables.gradle"
 
+rootProject.buildDir = 'C:/Users/micgr/.codex/memories/casa-michele-android-build/root'
+
+subprojects {
+    project.buildDir = "${rootProject.buildDir}/${project.name}"
+}
+
 allprojects {
     repositories {
         google()

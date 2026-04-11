@@ -7,15 +7,14 @@ yarn-error.log*
 pnpm-debug.log*
 lerna-debug.log*
 
-node_modules
-dist
+android/
+node_modules/
+dist/
+.npm-cache/
 dist-ssr
 *.local
 
 # Android build artifacts (keep APK, ignore build output)
-android/app/build/
-android/.gradle/
-android/build/
 android/local.properties
 
 # Editor directories and files
