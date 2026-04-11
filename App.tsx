@@ -154,7 +154,16 @@ const App: React.FC = () => {
 
     const saved = localStorage.getItem('ceb_cocktails_v5');
     if (saved) {
-      try { setCocktails(JSON.parse(saved)); } catch { /* ignore */ }
+      try {
+        const parsed = JSON.parse(saved);
+        // If cached data has old hassanfroo URLs, clear and force refresh
+        if (parsed.some((c: any) => c.imageUrl?.includes('hassanfroo'))) {
+          localStorage.removeItem('ceb_cocktails_v5');
+          refreshData();
+        } else {
+          setCocktails(parsed);
+        }
+      } catch { refreshData(); }
     } else {
       refreshData();
     }
@@ -714,18 +723,21 @@ const App: React.FC = () => {
                     style={{ animationDelay: `${Math.min(idx * 30, 300)}ms`, borderRadius: 20 }}
                   >
                     <div className="aspect-square bg-zinc-800 relative overflow-hidden">
-                      <img
-                        src={c.imageUrl}
-                        alt={c.name}
-                        className="w-full h-full object-cover object-[center_60%] transition-transform duration-500 group-hover:scale-105"
-                        loading="lazy"
-                        onError={(e) => {
-                          (e.target as HTMLImageElement).style.display = 'none';
-                          (e.target as HTMLImageElement).parentElement?.querySelector('.fallback-icon')?.classList.remove('hidden');
-                        }}
-                      />
-                      <div className="fallback-icon hidden text-zinc-700 absolute inset-0 flex items-center justify-center">
-                        <ImageIcon size={24} />
+                      {c.imageUrl ? (
+                        <img
+                          src={c.imageUrl}
+                          alt={c.name}
+                          className="w-full h-full object-cover object-[center_60%] transition-transform duration-500 group-hover:scale-105"
+                          loading="lazy"
+                          onError={(e) => {
+                            const img = e.target as HTMLImageElement;
+                            img.style.display = 'none';
+                            img.parentElement?.querySelector('.fallback-placeholder')?.classList.remove('hidden');
+                          }}
+                        />
+                      ) : null}
+                      <div className={`fallback-placeholder ${c.imageUrl ? 'hidden' : ''} absolute inset-0 bg-gradient-to-br from-zinc-700/60 via-zinc-800 to-zinc-900 flex items-center justify-center`}>
+                        <span className="text-3xl font-bold text-zinc-600">{c.name.charAt(0)}</span>
                       </div>
                       <div className="absolute inset-0 bg-gradient-to-t from-zinc-950/60 via-transparent to-transparent" />
                       {isOut && (
@@ -759,9 +771,13 @@ const App: React.FC = () => {
                   onClick={() => setSelectedCocktail(c)}
                   className={`flex items-center gap-3.5 p-3 card-flat cursor-pointer ${isOut ? 'opacity-40 grayscale' : ''}`}
                 >
-                  <div className="h-14 w-14 shrink-0 rounded-xl overflow-hidden bg-zinc-800 relative">
-                    <img src={c.imageUrl} alt={c.name} className="w-full h-full object-cover" loading="lazy"
-                      onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />
+                  <div className="h-14 w-14 shrink-0 rounded-xl overflow-hidden bg-zinc-800 relative flex items-center justify-center">
+                    {c.imageUrl ? (
+                      <img src={c.imageUrl} alt={c.name} className="w-full h-full object-cover" loading="lazy"
+                        onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />
+                    ) : (
+                      <span className="text-lg font-bold text-zinc-600">{c.name.charAt(0)}</span>
+                    )}
                     {isOut && <div className="absolute inset-0 bg-black/60 flex items-center justify-center"><X size={12} className="text-red-400" /></div>}
                   </div>
                   <div className="flex-1 min-w-0">
@@ -816,9 +832,13 @@ const App: React.FC = () => {
           }
         >
           <div className="space-y-5 max-w-2xl mx-auto">
-            <div className="aspect-[16/10] rounded-2xl overflow-hidden bg-zinc-800 relative">
-              <img src={selectedCocktail?.imageUrl} className="w-full h-full object-cover object-[center_60%]" loading="lazy"
-                onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />
+            <div className="aspect-[16/10] rounded-2xl overflow-hidden bg-zinc-800 relative flex items-center justify-center">
+              {selectedCocktail?.imageUrl ? (
+                <img src={selectedCocktail.imageUrl} className="w-full h-full object-cover object-[center_60%]" loading="lazy"
+                  onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />
+              ) : (
+                <Wine size={48} className="text-zinc-700" />
+              )}
               {selectedCocktail?.tasteProfiles?.length > 0 && (
                 <div className="absolute top-3 left-3 flex gap-1.5 flex-wrap">
                   {selectedCocktail.tasteProfiles.map(p => (
@@ -1146,8 +1166,13 @@ const App: React.FC = () => {
                   onClick={() => setSelectedCocktail(c)}
                   className="flex items-center gap-3.5 p-3 card-flat cursor-pointer hover:bg-zinc-800/40 transition-colors"
                 >
-                  <div className="w-11 h-11 bg-zinc-800 rounded-xl overflow-hidden shrink-0">
-                    <img src={c.imageUrl} className="w-full h-full object-cover" loading="lazy" />
+                  <div className="w-11 h-11 bg-zinc-800 rounded-xl overflow-hidden shrink-0 flex items-center justify-center">
+                    {c.imageUrl ? (
+                      <img src={c.imageUrl} className="w-full h-full object-cover" loading="lazy"
+                        onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />
+                    ) : (
+                      <span className="text-sm font-bold text-zinc-600">{c.name.charAt(0)}</span>
+                    )}
                   </div>
                   <div className="flex-1 min-w-0">
                     <h3 className="font-semibold text-white text-sm truncate">{c.name}</h3>
