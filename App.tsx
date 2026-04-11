@@ -305,11 +305,14 @@ const App: React.FC = () => {
 
     const newIsAvailableInDB = !!isCurrentlyOut; // If out(true), new DB is true(in). If in(false), new DB is false(out).
 
-    // Optimistic Update
-    const newAvail = { ...availability };
-    if (isCurrentlyOut) delete newAvail[ingredient];
-    else newAvail[ingredient] = true;
-    setAvailability(newAvail);
+    // Optimistic Update — use functional form to always read latest state,
+    // avoiding stale closure when multiple ingredients are toggled quickly.
+    setAvailability(prev => {
+      const next = { ...prev };
+      if (prev[ingredient]) delete next[ingredient];
+      else next[ingredient] = true;
+      return next;
+    });
 
     // DB Update
     const { error } = await supabase.from('availability').upsert({
@@ -320,9 +323,12 @@ const App: React.FC = () => {
 
     if (error) {
       // Revert optimistic update if failed
-      if (isCurrentlyOut) newAvail[ingredient] = true;
-      else delete newAvail[ingredient];
-      setAvailability(newAvail);
+      setAvailability(prev => {
+        const next = { ...prev };
+        if (isCurrentlyOut) next[ingredient] = true;
+        else delete next[ingredient];
+        return next;
+      });
       showToast('Failed to update availability');
     }
   };
