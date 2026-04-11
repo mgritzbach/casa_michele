@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import {
   Users,
   UserCircle,
@@ -96,6 +96,7 @@ const App: React.FC = () => {
   const [cocktails, setCocktails] = useState<Cocktail[]>([]);
   const [orders, setOrders] = useState<Order[]>([]);
   const [availability, setAvailability] = useState<IngredientAvailability>({});
+  const pendingToggles = useRef(new Set<string>());
 
   const [activeTab, setActiveTab] = useState<'ingredients' | 'orders' | 'instructions'>('orders');
   const [searchQuery, setSearchQuery] = useState('');
@@ -209,6 +210,8 @@ const App: React.FC = () => {
         { event: '*', schema: 'public', table: 'availability', filter: `event_code=eq.${code}` },
         (payload) => {
           const row = payload.new as any;
+          if (!row?.ingredient_name || !('is_available' in row)) return;
+          if (pendingToggles.current.has(row.ingredient_name)) return;
           setAvailability(prev => {
             const next = { ...prev };
             if (row.is_available === false) {
@@ -305,8 +308,10 @@ const App: React.FC = () => {
 
     const newIsAvailableInDB = !!isCurrentlyOut; // If out(true), new DB is true(in). If in(false), new DB is false(out).
 
-    // Optimistic Update — use functional form to always read latest state,
-    // avoiding stale closure when multiple ingredients are toggled quickly.
+    // Block realtime echo-back from reverting our optimistic update
+    pendingToggles.current.add(ingredient);
+
+    // Optimistic Update — use functional form to always read latest state
     setAvailability(prev => {
       const next = { ...prev };
       if (prev[ingredient]) delete next[ingredient];
@@ -320,6 +325,8 @@ const App: React.FC = () => {
       ingredient_name: ingredient,
       is_available: newIsAvailableInDB
     }, { onConflict: 'event_code, ingredient_name' });
+
+    pendingToggles.current.delete(ingredient);
 
     if (error) {
       // Revert optimistic update if failed
