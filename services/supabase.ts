@@ -1,6 +1,14 @@
 import { createClient } from '@supabase/supabase-js';
 
-const SUPABASE_URL = 'https://cbtroatixvydpwoviezf.supabase.co';
-const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImNidHJvYXRpeHZ5ZHB3b3ZpZXpmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzA3NDIyNTAsImV4cCI6MjA4NjMxODI1MH0.Lmegn_0huwUfwPFDANFdeO9hkdu3FiAE2yPEOIDQqCs';
+const env = (import.meta as ImportMeta & { env?: Record<string, string> }).env || {};
+const SUPABASE_URL = env.VITE_SUPABASE_URL
+  || 'https://cbtroatixvydpwoviezf.supabase.co';
 
-export const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
+// Publishable keys are safe for public clients. Authorization is enforced by
+// RLS and Casa session RPCs; no secret or service-role key ships.
+const SUPABASE_KEY = env.VITE_SUPABASE_PUBLISHABLE_KEY
+  || 'sb_publishable_iFF5ToqeVnGyu_37Z6-KlA_kc8FMK8b';
+
+export const supabase = createClient(SUPABASE_URL, SUPABASE_KEY, {
+  auth: { persistSession: false, autoRefreshToken: false },
+});

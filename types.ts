@@ -31,6 +31,8 @@ export interface EventSession {
   isBartender: boolean;
   guestName?: string;
   guestPhone?: string;
+  token: string;
+  expiresAt: string;
 }
 
 export interface AppState {
