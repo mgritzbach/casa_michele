@@ -631,7 +631,7 @@ const App: React.FC = () => {
         <div className="flex-1 flex flex-col justify-center max-w-md mx-auto w-full py-8 animate-slideUp">
           <div className="space-y-2 mb-8">
             <h2 className="text-3xl font-bold text-white tracking-tight">Bartender Access</h2>
-            <p className="text-zinc-500 text-[15px]">Start a new event or securely resume an existing one</p>
+            <p className="text-zinc-500 text-[15px]">Start a new event or resume one with the shared bartender password</p>
           </div>
 
           <form
@@ -659,9 +659,8 @@ const App: React.FC = () => {
               <input
                 name="password"
                 type="password"
-                placeholder="PIN or passphrase"
+                placeholder="Bartender password"
                 required
-                minLength={6}
                 maxLength={64}
                 autoComplete="current-password"
                 className="input-field h-14 text-[17px] text-center"

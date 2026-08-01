@@ -21,9 +21,10 @@ The Android app uses the same Supabase database and server-validated API.
 
 - No database password or service-role key ships in the client.
 - Direct anonymous access to the Casa tables is revoked.
-- Guest and bartender operations use token/PIN-gated `SECURITY DEFINER` RPCs.
-- Bartender PINs and session tokens are stored as hashes; repeated failed PIN
-  attempts are temporarily locked.
+- Guest and bartender operations use token/password-gated `SECURITY DEFINER` RPCs.
+- The shared bartender password and session tokens are stored as hashes; repeated
+  failed password attempts are temporarily locked. There is no minimum password
+  length enforced by the client or database.
 - Android blocks cleartext traffic and disables device backups.
 - The web build has a restrictive Content Security Policy.
 
