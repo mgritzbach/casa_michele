@@ -7,14 +7,19 @@ yarn-error.log*
 pnpm-debug.log*
 lerna-debug.log*
 
-android/
+android/.gradle/
+android/build/
+android/app/build/
+android/app/src/main/assets/
+android/app/src/main/res/xml/config.xml
+android/capacitor-cordova-android-plugins/
 node_modules/
+.playwright-cli/
 dist/
 .npm-cache/
 dist-ssr
 *.local
 
-# Android build artifacts (keep APK, ignore build output)
 android/local.properties
 
 # Editor directories and files

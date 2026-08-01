@@ -31,8 +31,11 @@ import {
 import { QRCodeSVG } from 'qrcode.react';
 import { PhoneInput } from 'react-international-phone';
 import 'react-international-phone/style.css';
+import { Capacitor } from '@capacitor/core';
+import { App as CapacitorApp } from '@capacitor/app';
+import { StatusBar, Style as StatusBarStyle } from '@capacitor/status-bar';
 import { Cocktail, Order, OrderStatus, IngredientAvailability, EventSession } from './types';
-import { supabase } from './services/supabase';
+import { CasaApi, CasaApiError } from './services/casaApi';
 import { fetchCocktailsFromSheet } from './services/sheet';
 import { Button, BottomSheet, Toast, Badge, Toggle } from './components/UI';
 
@@ -65,23 +68,12 @@ const playOrderChime = () => {
 };
 
 // ── Constants ──────────────────────────────────────
-const VERSION = 'v3.0.0';
+const VERSION = 'v4.0.0';
 const SESSION_STORAGE_KEY = 'casa_michele_session_v1';
-const BARTENDER_PASSWORD = 'shake';
 
 const INGREDIENT_CATEGORIES = ['Spirit', 'Liqueur', 'Juice', 'Syrup', 'Bitter', 'Other'];
 const SPIRITS_LIST = ['Bourbon', 'Calvados', 'Cognac', 'Gin', 'Pisco', 'Rum', 'Tequila', 'Vodka', 'Other'];
 
-const mapOrderFromDB = (row: any): Order => ({
-  id: row.id,
-  eventCode: row.event_code,
-  guestName: row.guest_name,
-  guestPhone: row.guest_phone,
-  cocktailId: row.cocktail_id,
-  cocktailName: row.cocktail_name,
-  status: row.status as OrderStatus,
-  timestamp: row.created_at ? new Date(row.created_at).getTime() : Date.now(),
-});
 
 const categorizeIngredient = (name: string): string => {
   const n = name.toLowerCase();
@@ -102,6 +94,8 @@ const App: React.FC = () => {
   const [cocktails, setCocktails] = useState<Cocktail[]>([]);
   const [orders, setOrders] = useState<Order[]>([]);
   const [availability, setAvailability] = useState<IngredientAvailability>({});
+  const knownOrderIds = useRef(new Set<string>());
+  const hasSynced = useRef(false);
   const pendingToggles = useRef(new Set<string>());
 
   // UI state
@@ -115,6 +109,10 @@ const App: React.FC = () => {
   const [lastOrderTime, setLastOrderTime] = useState(0);
   const [guestViewMode, setGuestViewMode] = useState<'grid' | 'list'>('grid');
   const [bartenderViewMode, setBartenderViewMode] = useState<'grid' | 'list'>('grid');
+  const [isJoining, setIsJoining] = useState(false);
+  const [isSubmittingOrder, setIsSubmittingOrder] = useState(false);
+  const [connectionState, setConnectionState] = useState<'connecting' | 'online' | 'offline'>('connecting');
+  const [lastSyncAt, setLastSyncAt] = useState<number | null>(null);
 
   // Filters
   const [filterUnavailableOnly, setFilterUnavailableOnly] = useState(false);
@@ -146,9 +144,10 @@ const App: React.FC = () => {
     const savedRaw = localStorage.getItem(SESSION_STORAGE_KEY);
     if (savedRaw) {
       try {
-        const saved = JSON.parse(savedRaw);
-        setSession({ eventCode: saved.eventCode, isBartender: saved.isBartender, guestName: saved.guestName, guestPhone: saved.guestPhone });
-        setView(saved.role === 'bartender' ? 'bartender' : 'guest');
+        const saved = JSON.parse(savedRaw) as EventSession;
+        if (!saved.token || new Date(saved.expiresAt).getTime() <= Date.now()) throw new Error('Expired session');
+        setSession(saved);
+        setView(saved.isBartender ? 'bartender' : 'guest');
       } catch { localStorage.removeItem(SESSION_STORAGE_KEY); }
     }
 
@@ -171,50 +170,65 @@ const App: React.FC = () => {
 
   // ── Realtime ─────────────────────────────────────
   useEffect(() => {
-    if (!session?.eventCode) return;
-    const code = session.eventCode;
+    if (!session?.token) return;
+    let active = true;
+    let syncing = false;
+    hasSynced.current = false;
+    knownOrderIds.current = new Set();
+    setConnectionState('connecting');
 
-    const fetchData = async () => {
-      const { data: ordersData } = await supabase.from('orders').select('*').eq('event_code', code).neq('status', 'deleted');
-      if (ordersData) setOrders(ordersData.map(mapOrderFromDB));
-
-      const { data: availData } = await supabase.from('availability').select('ingredient_name, is_available').eq('event_code', code);
-      const newAvail: IngredientAvailability = {};
-      availData?.forEach((row: any) => {
-        if (row.is_available === false) newAvail[row.ingredient_name] = true;
-      });
-      setAvailability(newAvail);
-    };
-    fetchData();
-
-    const channel = supabase
-      .channel(`room_${code}`)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'orders', filter: `event_code=eq.${code}` }, (payload) => {
-        const newOrder = mapOrderFromDB(payload.new as any);
-        if (payload.eventType === 'INSERT') {
-          setOrders(prev => [...prev, newOrder]);
-          playOrderChime();
-          showToast('New order received!', 'info');
-        } else if (payload.eventType === 'UPDATE') {
-          if (newOrder.status === 'deleted') setOrders(prev => prev.filter(o => o.id !== newOrder.id));
-          else setOrders(prev => prev.map(o => (o.id === newOrder.id ? newOrder : o)));
+    const syncData = async () => {
+      if (syncing || document.visibilityState === 'hidden') return;
+      syncing = true;
+      try {
+        const snapshot = await CasaApi.getSnapshot(session.token);
+        if (!active) return;
+        if (hasSynced.current && session.isBartender) {
+          const newPendingOrder = snapshot.orders.find(
+            order => order.status === 'pending' && !knownOrderIds.current.has(order.id),
+          );
+          if (newPendingOrder) {
+            playOrderChime();
+            showToast(`${newPendingOrder.guestName} ordered ${newPendingOrder.cocktailName}`, 'info');
+          }
         }
-      })
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'availability', filter: `event_code=eq.${code}` }, (payload) => {
-        const row = payload.new as any;
-        if (!row?.ingredient_name || !('is_available' in row)) return;
-        if (pendingToggles.current.has(row.ingredient_name)) return;
-        setAvailability(prev => {
-          const next = { ...prev };
-          if (row.is_available === false) next[row.ingredient_name] = true;
-          else delete next[row.ingredient_name];
-          return next;
-        });
-      })
-      .subscribe();
+        knownOrderIds.current = new Set(snapshot.orders.map(order => order.id));
+        hasSynced.current = true;
+        setOrders(snapshot.orders);
+        setAvailability(snapshot.availability);
+        setConnectionState('online');
+        setLastSyncAt(Date.now());
+      } catch (error) {
+        if (!active) return;
+        const apiError = error as CasaApiError;
+        if (apiError.isSessionExpired) {
+          localStorage.removeItem(SESSION_STORAGE_KEY);
+          setSession(null);
+          setView('landing');
+          setOrders([]);
+          setAvailability({});
+          showToast(apiError.message, 'error');
+        } else {
+          setConnectionState('offline');
+        }
+      } finally {
+        syncing = false;
+      }
+    };
 
-    return () => { supabase.removeChannel(channel); };
-  }, [session?.eventCode]);
+    void syncData();
+    const interval = window.setInterval(syncData, 2500);
+    const syncWhenVisible = () => { if (document.visibilityState === 'visible') void syncData(); };
+    document.addEventListener('visibilitychange', syncWhenVisible);
+    window.addEventListener('online', syncData);
+    return () => {
+      active = false;
+      window.clearInterval(interval);
+      document.removeEventListener('visibilitychange', syncWhenVisible);
+      window.removeEventListener('online', syncData);
+    };
+  }, [session?.token, view]);
+
 
   // Auto-join from URL
   useEffect(() => {
@@ -261,14 +275,31 @@ const App: React.FC = () => {
     setToastMessage(msg);
   }, []);
 
-  const handleJoin = (role: 'bartender' | 'guest', code: string, guestName?: string, guestPhone?: string) => {
-    if (!code) return;
-    const eventCode = code.toUpperCase();
-    setSession({ eventCode, isBartender: role === 'bartender', guestName, guestPhone });
-    localStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify({ role, eventCode, isBartender: role === 'bartender', guestName, guestPhone }));
-    setView(role);
-    setNotifiedOrders(new Set());
-    setHasInitializedOrders(false);
+  const handleJoin = async (
+    role: 'bartender' | 'guest',
+    code: string,
+    guestName?: string,
+    guestPhone?: string,
+    pin?: string,
+  ) => {
+    const eventCode = (code || '').toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 12);
+    if (!eventCode || isJoining) return;
+    setIsJoining(true);
+    try {
+      const nextSession = role === 'bartender'
+        ? await CasaApi.startBartenderSession(eventCode, pin || '')
+        : await CasaApi.startGuestSession(eventCode, guestName || '', guestPhone);
+      setSession(nextSession);
+      localStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify(nextSession));
+      setView(role);
+      setNotifiedOrders(new Set());
+      setHasInitializedOrders(false);
+      setConnectionState('connecting');
+    } catch (error) {
+      showToast((error as Error).message, 'error');
+    } finally {
+      setIsJoining(false);
+    }
   };
 
   const handleExit = () => {
@@ -279,43 +310,82 @@ const App: React.FC = () => {
     setAvailability({});
     setHasInitializedOrders(false);
     setNotifiedOrders(new Set());
+    setPendingSessionCode(null);
+    setConnectionState('connecting');
+    setLastSyncAt(null);
   };
 
-  const toggleAvailability = async (ingredient: string) => {
-    if (!session) return;
-    const isCurrentlyOut = availability[ingredient];
-    const newIsAvailableInDB = !!isCurrentlyOut;
+  useEffect(() => {
+    if (!Capacitor.isNativePlatform()) return;
+    void StatusBar.setStyle({ style: StatusBarStyle.Dark });
+    void StatusBar.setBackgroundColor({ color: '#09090b' });
+  }, []);
 
+  useEffect(() => {
+    if (!Capacitor.isNativePlatform()) return;
+    let removeListener: (() => Promise<void>) | undefined;
+
+    void CapacitorApp.addListener('backButton', () => {
+      if (isConfirmingOrder) {
+        setIsConfirmingOrder(false);
+      } else if (selectedCocktail) {
+        setSelectedCocktail(null);
+      } else if (showQrCode) {
+        setShowQrCode(false);
+      } else if (session) {
+        handleExit();
+      } else if (view !== 'landing') {
+        setView('landing');
+      } else {
+        void CapacitorApp.exitApp();
+      }
+    }).then(handle => {
+      removeListener = () => handle.remove();
+    });
+
+    return () => {
+      if (removeListener) void removeListener();
+    };
+  }, [isConfirmingOrder, selectedCocktail, showQrCode, session, view]);
+
+  const toggleAvailability = async (ingredient: string) => {
+    if (!session?.isBartender || pendingToggles.current.has(ingredient)) return;
+    const isCurrentlyOut = !!availability[ingredient];
     pendingToggles.current.add(ingredient);
     setAvailability(prev => {
       const next = { ...prev };
-      if (prev[ingredient]) delete next[ingredient];
+      if (isCurrentlyOut) delete next[ingredient];
       else next[ingredient] = true;
       return next;
     });
-
-    const { error } = await supabase.from('availability').upsert(
-      { event_code: session.eventCode, ingredient_name: ingredient, is_available: newIsAvailableInDB },
-      { onConflict: 'event_code, ingredient_name' }
-    );
-
-    pendingToggles.current.delete(ingredient);
-
-    if (error) {
+    try {
+      await CasaApi.setAvailability(session.token, ingredient, isCurrentlyOut);
+    } catch (error) {
       setAvailability(prev => {
         const next = { ...prev };
         if (isCurrentlyOut) next[ingredient] = true;
         else delete next[ingredient];
         return next;
       });
-      showToast('Failed to update', 'error');
+      showToast((error as Error).message || 'Failed to update stock.', 'error');
+    } finally {
+      pendingToggles.current.delete(ingredient);
     }
   };
 
   const updateOrder = async (orderId: string, status: OrderStatus) => {
-    setOrders(prev => prev.map(o => (o.id === orderId ? { ...o, status } : o)));
-    await supabase.from('orders').update({ status }).eq('id', orderId);
-    if (status === 'completed') showToast('Guest notified');
+    if (!session?.isBartender) return;
+    const previous = orders.find(order => order.id === orderId);
+    setOrders(prev => status === 'deleted'
+      ? prev.filter(order => order.id !== orderId)
+      : prev.map(order => (order.id === orderId ? { ...order, status } : order)));
+    try {
+      await CasaApi.updateOrderStatus(session.token, orderId, status);
+      if (status === 'completed') showToast('Marked ready. The guest was notified.');
+    } catch (error) {
+      if (previous) setOrders(prev => [...prev.filter(order => order.id !== orderId), previous]);
+      showToast((error as Error).message || 'Could not update the order.', 'error');
+    }
   };
 
   const openRecipeForOrder = (order: Order) => {
@@ -324,10 +394,14 @@ const App: React.FC = () => {
     else showToast('Recipe not found', 'error');
   };
 
-  const placeOrder = () => {
-    if (!session || !selectedCocktail) return;
+  const placeOrder = async () => {
+    if (!session || !selectedCocktail || isSubmittingOrder) return;
+    if (connectionState === 'offline') {
+      showToast('You are offline. Reconnect to place an order.', 'error');
+      return;
+    }
     if (selectedCocktail.ingredients.some(i => availability[i])) {
-      showToast('Sorry, ingredients ran out!', 'error');
+      showToast('Sorry, an ingredient just ran out.', 'error');
       setIsConfirmingOrder(false);
       return;
     }
@@ -335,21 +409,19 @@ const App: React.FC = () => {
       showToast('Please wait a moment', 'info');
       return;
     }
-    supabase.from('orders').insert({
-      event_code: session.eventCode,
-      guest_name: session.guestName || 'Guest',
-      guest_phone: session.guestPhone,
-      cocktail_id: selectedCocktail.id,
-      cocktail_name: selectedCocktail.name,
-      status: 'pending',
-      created_at: new Date().toISOString(),
-    }).then(({ error }) => {
-      if (error) showToast('Failed to order', 'error');
-      else showToast('Sent to bar!');
-    });
-    setLastOrderTime(Date.now());
-    setIsConfirmingOrder(false);
-    setSelectedCocktail(null);
+
+    setIsSubmittingOrder(true);
+    try {
+      await CasaApi.placeOrder(session.token, selectedCocktail, crypto.randomUUID());
+      setLastOrderTime(Date.now());
+      setIsConfirmingOrder(false);
+      setSelectedCocktail(null);
+      showToast('Order sent to the bar!');
+    } catch (error) {
+      showToast((error as Error).message || 'Could not place your order.', 'error');
+    } finally {
+      setIsSubmittingOrder(false);
+    }
   };
 
   const copyShoppingList = () => {
@@ -444,6 +516,7 @@ const App: React.FC = () => {
         </div>
 
         <div className="absolute bottom-6 text-zinc-800 text-[11px] font-mono">{VERSION}</div>
+        <Toast isVisible={!!toastMessage} message={toastMessage} onHide={() => setToastMessage('')} type={toastType} />
       </div>
     );
   }
@@ -481,6 +554,8 @@ const App: React.FC = () => {
                 placeholder="Your name"
                 required
                 autoFocus
+                maxLength={60}
+                autoComplete="name"
                 className="input-field h-14 text-[17px]"
               />
 
@@ -514,7 +589,12 @@ const App: React.FC = () => {
                   name="code"
                   placeholder="Event code"
                   required
+                  minLength={4}
+                  maxLength={12}
+                  pattern="[A-Za-z0-9]+"
+                  autoCapitalize="characters"
                   className="input-field h-14 text-[17px] font-semibold tracking-widest text-center uppercase"
+                  autoComplete="one-time-code"
                 />
               ) : (
                 <div className="h-14 px-5 bg-zinc-800/40 text-zinc-400 rounded-2xl flex items-center justify-between border border-zinc-800/60">
@@ -524,8 +604,8 @@ const App: React.FC = () => {
               )}
             </div>
 
-            <Button type="submit" className="h-[56px] bg-amber-500 text-zinc-950 font-semibold text-[17px] rounded-2xl mt-2">
-              Enter Bar
+            <Button type="submit" disabled={isJoining} className="h-[56px] bg-amber-500 text-zinc-950 font-semibold text-[17px] rounded-2xl mt-2">
+              {isJoining ? 'Joining...' : 'Enter Bar'}
             </Button>
           </form>
         </div>
@@ -551,16 +631,15 @@ const App: React.FC = () => {
         <div className="flex-1 flex flex-col justify-center max-w-md mx-auto w-full py-8 animate-slideUp">
           <div className="space-y-2 mb-8">
             <h2 className="text-3xl font-bold text-white tracking-tight">Bartender Access</h2>
-            <p className="text-zinc-500 text-[15px]">Manage inventory and incoming orders</p>
+            <p className="text-zinc-500 text-[15px]">Start a new event or resume one with the shared bartender password</p>
           </div>
 
           <form
             onSubmit={(e) => {
               e.preventDefault();
               const fd = new FormData(e.currentTarget);
-              const password = fd.get('password') as string;
-              if (password !== BARTENDER_PASSWORD) { showToast('Incorrect password', 'error'); return; }
-              handleJoin('bartender', fd.get('code') as string);
+              const pin = fd.get('password') as string;
+              void handleJoin('bartender', fd.get('code') as string, undefined, undefined, pin);
             }}
             className="space-y-4"
           >
@@ -569,22 +648,29 @@ const App: React.FC = () => {
               placeholder="Event code"
               required
               autoFocus
+              minLength={4}
+              maxLength={12}
+              pattern="[A-Za-z0-9]+"
+              autoCapitalize="characters"
+              autoComplete="username"
               className="input-field h-14 text-[17px] font-semibold tracking-widest text-center uppercase"
             />
             <div className="relative">
               <input
                 name="password"
                 type="password"
-                placeholder="Password"
+                placeholder="Bartender password"
                 required
+                maxLength={64}
+                autoComplete="current-password"
                 className="input-field h-14 text-[17px] text-center"
               />
               <div className="absolute right-5 top-1/2 -translate-y-1/2 text-zinc-600">
                 <Lock size={18} />
               </div>
             </div>
-            <Button type="submit" className="h-[56px] bg-white text-zinc-950 font-semibold text-[17px] rounded-2xl mt-2">
-              Sign In
+            <Button type="submit" disabled={isJoining} className="h-[56px] bg-white text-zinc-950 font-semibold text-[17px] rounded-2xl mt-2">
+              {isJoining ? 'Securing event...' : 'Start / Sign In'}
             </Button>
           </form>
         </div>
@@ -599,7 +685,7 @@ const App: React.FC = () => {
   // ════════════════════════════════════════════════
   if (view === 'guest' && session) {
     const myOrders = orders.filter(o => o.guestName === session.guestName);
-    const lastOrder = myOrders.length > 0 ? myOrders.sort((a, b) => b.timestamp - a.timestamp)[0] : null;
+    const lastOrder = myOrders.length > 0 ? [...myOrders].sort((a, b) => b.timestamp - a.timestamp)[0] : null;
     const isUnavailable = selectedCocktail?.ingredients.some(i => availability[i]);
 
     return (
@@ -607,8 +693,8 @@ const App: React.FC = () => {
         {/* Header */}
         <header className="px-5 py-4 flex justify-between items-center border-b border-zinc-800/50 glass sticky top-0 z-30">
           <div className="flex items-center gap-2.5">
-            <span className="w-2 h-2 bg-emerald-500 rounded-full animate-gentlePulse" />
-            <span className="text-[11px] font-semibold text-zinc-400 uppercase tracking-widest">{session.eventCode}</span>
+            <span className={`w-2 h-2 rounded-full ${connectionState === 'online' ? 'bg-emerald-500' : connectionState === 'offline' ? 'bg-red-500' : 'bg-amber-500'} ${connectionState !== 'offline' ? 'animate-gentlePulse' : ''}`} />
+            <span className="text-[11px] font-semibold text-zinc-400 uppercase tracking-widest">{session.eventCode} - {connectionState}</span>
           </div>
           <button
             onClick={handleExit}
@@ -876,8 +962,8 @@ const App: React.FC = () => {
         <BottomSheet isOpen={isConfirmingOrder} onClose={() => setIsConfirmingOrder(false)} title="Confirm Order"
           footer={
             <div className="flex flex-col gap-2 max-w-sm mx-auto w-full">
-              <Button onClick={placeOrder} className="bg-amber-500 text-zinc-950 h-[52px] font-semibold">Confirm Order</Button>
-              <Button onClick={() => setIsConfirmingOrder(false)} variant="ghost" className="text-zinc-500 h-10 text-sm">Cancel</Button>
+              <Button onClick={placeOrder} disabled={isSubmittingOrder || connectionState === 'offline'} className="bg-amber-500 text-zinc-950 h-[52px] font-semibold">{isSubmittingOrder ? 'Sending...' : 'Confirm Order'}</Button>
+              <Button onClick={() => setIsConfirmingOrder(false)} disabled={isSubmittingOrder} variant="ghost" className="text-zinc-500 h-10 text-sm">Cancel</Button>
             </div>
           }
         >
@@ -909,7 +995,7 @@ const App: React.FC = () => {
             </div>
             <div>
               <h1 className="text-[15px] font-bold text-white tracking-tight leading-none">{session.eventCode}</h1>
-              <p className="text-[10px] text-zinc-500 font-medium mt-0.5">Bartender Mode</p>
+              <p className={`text-[10px] font-medium mt-0.5 ${connectionState === 'offline' ? 'text-red-400' : 'text-zinc-500'}`}>{connectionState === 'online' ? 'Live - synced just now' : connectionState === 'offline' ? 'Offline - reconnecting' : 'Connecting...'}</p>
             </div>
           </div>
           <div className="flex gap-1.5">
@@ -934,7 +1020,12 @@ const App: React.FC = () => {
                 <p className="text-zinc-500 text-sm">Guests can scan to join</p>
               </div>
               <div className="p-3 bg-white rounded-2xl">
-                <QRCodeSVG value={`${window.location.origin}?code=${session.eventCode}`} size={180} level="H" includeMargin />
+                <QRCodeSVG
+                  value={`${Capacitor.isNativePlatform() ? 'https://casa-michele.mic-gritzbach.workers.dev' : window.location.origin}?code=${session.eventCode}`}
+                  size={180}
+                  level="H"
+                  includeMargin
+                />
               </div>
               <div className="w-full bg-zinc-100 p-4 rounded-xl text-center">
                 <p className="text-zinc-400 text-[10px] font-semibold uppercase tracking-widest mb-1">Session Code</p>
@@ -997,7 +1088,6 @@ const App: React.FC = () => {
                   return (
                     <div
                       key={ing}
-                      onClick={() => toggleAvailability(ing)}
                       className={`flex items-center justify-between h-[56px] px-4 rounded-2xl cursor-pointer transition-all duration-200 border select-none ${
                         isOut
                           ? 'bg-red-500/5 border-red-500/15 hover:bg-red-500/10'
@@ -1008,7 +1098,7 @@ const App: React.FC = () => {
                         <span className={`text-[13px] font-semibold ${isOut ? 'text-red-400' : 'text-zinc-200'}`}>{ing}</span>
                         <span className="text-[9px] font-medium text-zinc-600 uppercase tracking-wider">{categorizeIngredient(ing)}</span>
                       </div>
-                      <Toggle on={!isOut} onToggle={() => toggleAvailability(ing)} size="sm" />
+                      <Toggle on={!isOut} onToggle={() => toggleAvailability(ing)} size="md" />
                     </div>
                   );
                 })}
@@ -1056,8 +1146,7 @@ const App: React.FC = () => {
                 </div>
               ) : (
                 <div className={`grid ${bartenderViewMode === 'grid' ? 'grid-cols-1 sm:grid-cols-2 lg:grid-cols-3' : 'grid-cols-1'} gap-3`}>
-                  {orders
-                    .sort((a, b) => {
+                  {[...orders].sort((a, b) => {
                       if (a.status === 'pending' && b.status !== 'pending') return -1;
                       if (a.status !== 'pending' && b.status === 'pending') return 1;
                       return (b.timestamp || 0) - (a.timestamp || 0);
