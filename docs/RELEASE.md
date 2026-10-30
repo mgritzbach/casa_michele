@@ -77,6 +77,11 @@ clients might retry old changes.
 
 ## Web deployment
 
+Cloudflare's connected Git build publishes this branch at
+https://codex-offline-cross-platform-casa-michele.mic-gritzbach.workers.dev.
+The branch preview was opened and visually checked on 30 October 2026. It is
+separate from the production URL used in printed QR codes.
+
 Deploy the built `dist` directory to the existing Cloudflare Worker configured in
 `wrangler.json`. Preserve the public URL because printed QR codes depend on it.
 
@@ -87,7 +92,7 @@ npx wrangler deploy
 ```
 
 Cloudflare authentication is required on the release machine. The current browser
-session is at the Cloudflare sign-in screen. A deployment has not yet been claimed.
+session is at the Cloudflare sign-in screen. Production deployment is pending.
 After deployment verify the root page, the new bundle, service worker, and
 `/.well-known/assetlinks.json`, then use an Android device to test HTTPS link
 verification and the custom-scheme fallback. Check a fresh guest session against

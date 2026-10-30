@@ -27,7 +27,8 @@ button:disabled { cursor: default; }
 .input-field { display: block; width: 100%; height: 52px; padding: 0 16px; background: var(--panel); color: var(--text); border: 1px solid #64635e; border-radius: 8px; font-size: 16px; font-weight: 400; }
 .input-field:focus { outline: 2px solid var(--gold); outline-offset: 2px; }
 .input-field::placeholder { color: #85847f; }
-.scroll-x { display: flex; overflow-x: auto; scrollbar-width: thin; gap: 8px; padding: 0 16px; }
+.scroll-x { display: flex; overflow-x: auto; scrollbar-width: none; gap: 8px; padding: 0 16px; }
+.scroll-x::-webkit-scrollbar { display: none; }
 .scroll-x > * { flex-shrink: 0; }
 .nav-bar { position: fixed; bottom: 0; left: 0; right: 0; z-index: 40; background: var(--panel); border-top: 1px solid var(--line); }
 .nav-item { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; min-width: 88px; min-height: 60px; color: var(--muted); position: relative; border-radius: 8px; }
