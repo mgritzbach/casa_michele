@@ -13,7 +13,7 @@ Do not turn a pending check into a pass merely because the build compiles.
 | Area | Evidence | Current gate |
 | --- | --- | --- |
 | Engineering | 19 persistence, retry, link and offline-asset tests; TypeScript; production build; SQL authorization and idempotency assertions; Android offline runtime test | 9/10 internal assessment; critical engineering checks passed |
-| Product | Offline walk-in, status, stock and reload; reconnect; cross-client menu updates; email and WhatsApp-number join; expired-session recovery; guest offline block; ready notification | Browser checks passed; installed Android link check pending |
+| Product | Offline walk-in, status, stock and reload; reconnect; cross-client menu updates; email and WhatsApp-number join; expired-session recovery; guest offline block; ready notification | Browser and native link checks passed; production domain association pending |
 | UI | Shared gold/charcoal/grey system; mobile and desktop review; keyboard cards, focus-managed dialogs, visible labels; zero automated WCAG violations on five key screens | 9/10 internal assessment; evidence recorded in test-results |
 | Release | Android APK compiles; same web bundle copied into APK; additive v4-compatible schema; CI and rollback instructions | Production deployment and Android domain verification pending; final score withheld |
 
