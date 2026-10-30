@@ -83,6 +83,11 @@ public class OfflineWorkspaceTest {
             Intent launch = new Intent(context, MainActivity.class).setAction(Intent.ACTION_VIEW)
                 .setData(Uri.parse("casamichele://join?code=NATIVEQA")).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
             scenario = ActivityScenario.launch(launch);
+            scenario.onActivity(activity -> assertEquals("casamichele://join?code=NATIVEQA", activity.getBridge().getIntentUri().toString()));
+            waitFor("!!window.Capacitor?.Plugins?.App");
+            assertEquals("true", js("window.Capacitor.isNativePlatform()"));
+            js("window.Capacitor.Plugins.App.getLaunchUrl().then(r => window.casaTestLaunch = r?.url).catch(e => window.casaTestLaunch = String(e))");
+            waitFor("window.casaTestLaunch === 'casamichele://join?code=NATIVEQA'");
             waitFor("document.body.innerText.includes('Internet needed for guests')");
         } finally {
             if (scenario != null) scenario.close();
