@@ -2,7 +2,10 @@ name: Verify web and Android
 on:
   pull_request:
   push:
-    branches: [main, CDX/casa-android-v4, codex/offline-cross-platform]
+    branches: [main, CDX/casa-android-v4]
+concurrency:
+  group: verify-${{ github.ref }}
+  cancel-in-progress: true
 permissions:
   contents: read
 jobs:
@@ -22,6 +25,8 @@ jobs:
           distribution: temurin
           java-version: '21'
       - uses: android-actions/setup-android@v3
+        with:
+          packages: 'platform-tools'
       - run: npx cap sync android
       - run: bash android/gradlew -p android testDebugUnitTest assembleDebug
       - uses: actions/upload-artifact@v4
