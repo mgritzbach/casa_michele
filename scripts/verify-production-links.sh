@@ -12,12 +12,12 @@ for attempt in $(seq 1 36); do
   sleep 5
 done
 grep -q "$domain: verified" production-link-results/domain-state.txt
-adb shell am start -W -a android.intent.action.VIEW -c android.intent.category.BROWSABLE -d "https://$domain/?event=QA30LIVE" | tee production-link-results/https-launch.txt
+adb shell am start -W -a android.intent.action.VIEW -c android.intent.category.BROWSABLE -d "https://$domain/?code=QA30LIVE" | tee production-link-results/https-launch.txt
 grep -q "$package/" production-link-results/https-launch.txt
 sleep 5
 adb shell uiautomator dump /sdcard/window.xml
 adb pull /sdcard/window.xml production-link-results/https-window.xml
 adb exec-out screencap -p > production-link-results/https-screen.png
 adb shell am force-stop "$package"
-adb shell am start -W -a android.intent.action.VIEW -c android.intent.category.BROWSABLE -d 'casamichele://join?event=QA30LIVE' | tee production-link-results/custom-launch.txt
+adb shell am start -W -a android.intent.action.VIEW -c android.intent.category.BROWSABLE -d 'casamichele://join?code=QA30LIVE' | tee production-link-results/custom-launch.txt
 grep -q "$package/" production-link-results/custom-launch.txt
