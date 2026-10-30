@@ -1,66 +1,75 @@
 # Casa Michele
 
-Casa Michele is a mobile-first cocktail menu and event bar app. Guests join an
-event, browse the live menu, and place orders. Bartenders operate the same event
-from a protected dashboard for orders, stock, recipes, and guest-ready updates.
+One React application for the web and Android. Guests join an event, choose a
+cocktail, and see when it is ready. Bartenders manage orders, recipes and stock,
+including when the internet is unavailable.
 
-The production web app is available at
-[casa-michele.mic-gritzbach.workers.dev](https://casa-michele.mic-gritzbach.workers.dev).
-The Android app uses the same Supabase database and server-validated API.
+Production URL: https://casa-michele.mic-gritzbach.workers.dev
 
-## Product flows
+## What v5 changes
 
-- Guest: join by event code or QR, filter/search 41 cocktails, order, and receive
-  a ready notification.
-- Bartender: create or resume a protected event, manage orders, update ingredient
-  availability, inspect recipes, and share the event QR.
-- Resilience: opaque sessions are restored locally, network state is visible,
-  mutations are optimistic with rollback, and duplicate orders are idempotent.
+- Bundles the menu, recipes and 41 optimised photos for Android's first offline launch.
+- Prepares the web application for offline use with a service worker. The initial
+  visit must finish while connected. An update is installed only when the user chooses.
+- Saves bartender stock, walk-in orders and order status in IndexedDB with an
+  atomic outbox. Reconnect replays stable mutation IDs. Concurrent changes require
+  an explicit choice; unrelated work continues syncing.
+- Retains cached work when a bartender session expires and supports reconnecting
+  the same event. Local-only bars can be connected later.
+- Blocks guest ordering when the backend cannot be reached. Guests enter their
+  name and either an email or WhatsApp number. These are contact details, not
+  verified identities. WhatsApp account numbers cannot be read from another app.
+- Generates public HTTPS event QR codes, with browser fallback and Android join links.
+- Uses a shared gold, charcoal and grey design system, labelled forms, keyboard
+  controls, focus-managed dialogs and reduced-motion support.
 
-## Security model
+## Development
 
-- No database password or service-role key ships in the client.
-- Direct anonymous access to the Casa tables is revoked.
-- Guest and bartender operations use token/password-gated `SECURITY DEFINER` RPCs.
-- The shared bartender password and session tokens are stored as hashes; repeated
-  failed password attempts are temporarily locked. There is no minimum password
-  length enforced by the client or database.
-- Android blocks cleartext traffic and disables device backups.
-- The web build has a restrictive Content Security Policy.
+Node.js 22+, Java 21 and Android SDK 36 are required for both targets.
 
-The database migration is in `supabase/migrations/` and is designed to preserve
-the existing orders and availability data.
-
-## Local development
-
-Prerequisites: Node.js 22+ and Java 21 for Android builds.
-
-```bash
-npm install
+```sh
+npm ci
 npm run dev
+npm run verify
+npm audit --audit-level=moderate
 ```
 
-The checked-in Supabase publishable key identifies the public client and is safe
-to distribute. Authorization is enforced in the database. To target another
-project, set `VITE_SUPABASE_URL` and `VITE_SUPABASE_PUBLISHABLE_KEY`.
+The Supabase publishable key in the client is public by design. No service-role
+key or database password belongs in this application. Optional configuration:
+`VITE_SUPABASE_URL` and `VITE_SUPABASE_PUBLISHABLE_KEY`.
 
-## Verification
-
-```bash
-npm run typecheck
-npm run build
-npm audit
-```
+`npm run menu:bundle` refreshes the committed menu and optimised photographs from
+the existing menu sheet. Review the resulting data and images before release.
+The in-app refresh also retrieves menu edits; newly added remote photos are not
+guaranteed offline until included in a new bundled release.
 
 ## Android
 
-```bash
-npm run build
-npx cap sync android
+```sh
+npm run android:sync
 cd android
 ./gradlew testDebugUnitTest assembleDebug
 ```
 
-The debug APK is generated at
-`android/app/build/outputs/apk/debug/app-debug.apk`. A Play Store release still
-requires the owner's release keystore and store signing configuration.
+The APK is generated at `android/app/build/outputs/apk/debug/app-debug.apk`.
+To install beside an older APK when its signing key is unavailable:
+
+```sh
+./gradlew assembleDebug -PsideBySide=true
+```
+
+This uses `com.casamichele.app.preview` and the label **Casa Michele v5**. It
+preserves the old app and its local storage. Both apps can join the same online
+event. An in-place upgrade of the old app requires its original signing key.
+The repository does not contain private signing material. Keep the distribution
+key stable and update `public/.well-known/assetlinks.json` if the signing identity changes.
+
+## Architecture and release
+
+See `docs/ARCHITECTURE.md`, `docs/ACCEPTANCE.md` and `docs/RELEASE.md` for data
+ownership, test evidence, deployment and rollback. GitHub Actions checks types,
+automated persistence tests, web packaging, dependency audit and Android compilation.
+
+The database is shared with unrelated applications. Apply only the Casa migrations
+in the documented order. Do not reset the project or blindly push a partial local
+migration history to it. Existing v4 RPCs remain available.

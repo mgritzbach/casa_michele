@@ -1,0 +1,66 @@
+name: Verify web and Android
+on:
+  pull_request:
+  push:
+    branches: [main, CDX/casa-android-v4, codex/offline-cross-platform]
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci
+      - run: npm run verify
+      - run: npm audit --audit-level=moderate
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - uses: android-actions/setup-android@v3
+      - run: npx cap sync android
+      - run: bash android/gradlew -p android testDebugUnitTest assembleDebug
+      - uses: actions/upload-artifact@v4
+        with:
+          name: verified-web-build
+          path: dist/
+      # CI debug signing keys are ephemeral. Distribute only a build signed by
+      # the owner's stable key, whose SHA-256 is in assetlinks.json.
+  android-runtime:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - run: npm ci
+      - run: npm run android:sync
+      - name: Enable acceleration for the disposable emulator
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          arch: x86_64
+          profile: pixel_5
+          disable-animations: true
+          script: bash android/gradlew -p android :app:connectedDebugAndroidTest --console=plain
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: android-runtime-results
+          path: |
+            android/app/build/reports/androidTests/
+            android/app/build/outputs/androidTest-results/

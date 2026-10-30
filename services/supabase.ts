@@ -1,6 +1,6 @@
 import { createClient } from '@supabase/supabase-js';
 
-const env = (import.meta as ImportMeta & { env?: Record<string, string> }).env || {};
+const env: Record<string, string | undefined> = import.meta.env || {};
 const SUPABASE_URL = env.VITE_SUPABASE_URL
   || 'https://cbtroatixvydpwoviezf.supabase.co';
 
@@ -11,4 +11,5 @@ const SUPABASE_KEY = env.VITE_SUPABASE_PUBLISHABLE_KEY
 
 export const supabase = createClient(SUPABASE_URL, SUPABASE_KEY, {
   auth: { persistSession: false, autoRefreshToken: false },
+  global: { fetch: (input, init) => fetch(input, { ...init, signal: init?.signal || AbortSignal.timeout(12000) }) },
 });

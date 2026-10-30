@@ -24,6 +24,8 @@ export interface Order {
   status: OrderStatus;
   timestamp: number;
   guestPhone?: string;
+  guestEmail?: string;
+  revision?: number;
 }
 
 export interface EventSession {
@@ -33,6 +35,8 @@ export interface EventSession {
   guestPhone?: string;
   token: string;
   expiresAt: string;
+  offlineOnly?: boolean;
+  guestEmail?: string;
 }
 
 export interface AppState {

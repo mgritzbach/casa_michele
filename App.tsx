@@ -29,14 +29,19 @@ import {
   ChevronDown,
 } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
-import { PhoneInput } from 'react-international-phone';
-import 'react-international-phone/style.css';
 import { Capacitor } from '@capacitor/core';
 import { App as CapacitorApp } from '@capacitor/app';
-import { StatusBar, Style as StatusBarStyle } from '@capacitor/status-bar';
 import { Cocktail, Order, OrderStatus, IngredientAvailability, EventSession } from './types';
 import { CasaApi, CasaApiError } from './services/casaApi';
 import { fetchCocktailsFromSheet } from './services/sheet';
+import bundledMenu from './data/menu.json';
+import { useEventSync } from './hooks/useEventSync';
+import { useConnectivity } from './hooks/useConnectivity';
+import { Welcome } from './components/Welcome';
+import { GuestEntry } from './components/GuestEntry';
+import { SyncStatus } from './components/SyncStatus';
+import { eventJoinUrl, eventCodeFromUrl, normalizeEventCode } from './services/links';
+import { guestRequestKey, acknowledgeGuestRequest } from './services/guestRequests';
 import { Button, BottomSheet, Toast, Badge, Toggle } from './components/UI';
 
 // ── Helpers ────────────────────────────────────────
@@ -68,7 +73,7 @@ const playOrderChime = () => {
 };
 
 // ── Constants ──────────────────────────────────────
-const VERSION = 'v4.0.0';
+const VERSION = 'v5.0.0';
 const SESSION_STORAGE_KEY = 'casa_michele_session_v1';
 
 const INGREDIENT_CATEGORIES = ['Spirit', 'Liqueur', 'Juice', 'Syrup', 'Bitter', 'Other'];
@@ -91,9 +96,15 @@ const App: React.FC = () => {
   // Core state
   const [view, setView] = useState<'landing' | 'bartender' | 'guest'>('landing');
   const [session, setSession] = useState<EventSession | null>(null);
-  const [cocktails, setCocktails] = useState<Cocktail[]>([]);
-  const [orders, setOrders] = useState<Order[]>([]);
-  const [availability, setAvailability] = useState<IngredientAvailability>({});
+  const [savedBars, setSavedBars] = useState<EventSession[]>(() => {
+    try { const bars = JSON.parse(localStorage.getItem('casa-saved-bars-v5') || '[]'); return Array.isArray(bars) ? bars.filter(bar => bar?.isBartender && typeof bar.eventCode === 'string') : []; } catch { return []; }
+  });
+  const [cocktails, setCocktails] = useState<Cocktail[]>(bundledMenu as Cocktail[]);
+  const sync = useEventSync(session);
+  const { orders, availability, connection: connectionState, savedAt: lastSyncAt } = sync;
+  const connectivity = useConnectivity();
+  const guestOrderKey = useRef<string | null>(null);
+  const [walkInName, setWalkInName] = useState('Walk-in guest');
   const knownOrderIds = useRef(new Set<string>());
   const hasSynced = useRef(false);
   const pendingToggles = useRef(new Set<string>());
@@ -111,8 +122,6 @@ const App: React.FC = () => {
   const [bartenderViewMode, setBartenderViewMode] = useState<'grid' | 'list'>('grid');
   const [isJoining, setIsJoining] = useState(false);
   const [isSubmittingOrder, setIsSubmittingOrder] = useState(false);
-  const [connectionState, setConnectionState] = useState<'connecting' | 'online' | 'offline'>('connecting');
-  const [lastSyncAt, setLastSyncAt] = useState<number | null>(null);
 
   // Filters
   const [filterUnavailableOnly, setFilterUnavailableOnly] = useState(false);
@@ -130,7 +139,6 @@ const App: React.FC = () => {
   // QR & Phone
   const [pendingSessionCode, setPendingSessionCode] = useState<string | null>(null);
   const [showQrCode, setShowQrCode] = useState(false);
-  const [guestPhoneInput, setGuestPhoneInput] = useState('');
 
   // Timer for live updating timeAgo
   const [, setTick] = useState(0);
@@ -139,102 +147,46 @@ const App: React.FC = () => {
     return () => clearInterval(interval);
   }, []);
 
-  // ── Init ─────────────────────────────────────────
+  // Restore a local bartender session even if its online token has expired.
   useEffect(() => {
-    const savedRaw = localStorage.getItem(SESSION_STORAGE_KEY);
-    if (savedRaw) {
-      try {
-        const saved = JSON.parse(savedRaw) as EventSession;
-        if (!saved.token || new Date(saved.expiresAt).getTime() <= Date.now()) throw new Error('Expired session');
+    try {
+      const saved = JSON.parse(localStorage.getItem(SESSION_STORAGE_KEY) || 'null') as EventSession | null;
+      if (saved && (saved.isBartender || new Date(saved.expiresAt).getTime() > Date.now())) {
         setSession(saved);
         setView(saved.isBartender ? 'bartender' : 'guest');
-      } catch { localStorage.removeItem(SESSION_STORAGE_KEY); }
-    }
-
-    const saved = localStorage.getItem('ceb_cocktails_v5');
-    if (saved) {
-      try {
-        const parsed = JSON.parse(saved);
-        // If cached data has old hassanfroo URLs, clear and force refresh
-        if (parsed.some((c: any) => c.imageUrl?.includes('hassanfroo'))) {
-          localStorage.removeItem('ceb_cocktails_v5');
-          refreshData();
-        } else {
-          setCocktails(parsed);
-        }
-      } catch { refreshData(); }
-    } else {
-      refreshData();
-    }
+      }
+      const menu = JSON.parse(localStorage.getItem('casa-menu-v5') || 'null');
+      if (Array.isArray(menu) && menu.length) setCocktails(menu);
+    } catch { /* The bundled menu remains available if a cache is damaged. */ }
   }, []);
 
-  // ── Realtime ─────────────────────────────────────
   useEffect(() => {
-    if (!session?.token) return;
-    let active = true;
-    let syncing = false;
-    hasSynced.current = false;
-    knownOrderIds.current = new Set();
-    setConnectionState('connecting');
-
-    const syncData = async () => {
-      if (syncing || document.visibilityState === 'hidden') return;
-      syncing = true;
-      try {
-        const snapshot = await CasaApi.getSnapshot(session.token);
-        if (!active) return;
-        if (hasSynced.current && session.isBartender) {
-          const newPendingOrder = snapshot.orders.find(
-            order => order.status === 'pending' && !knownOrderIds.current.has(order.id),
-          );
-          if (newPendingOrder) {
-            playOrderChime();
-            showToast(`${newPendingOrder.guestName} ordered ${newPendingOrder.cocktailName}`, 'info');
-          }
-        }
-        knownOrderIds.current = new Set(snapshot.orders.map(order => order.id));
-        hasSynced.current = true;
-        setOrders(snapshot.orders);
-        setAvailability(snapshot.availability);
-        setConnectionState('online');
-        setLastSyncAt(Date.now());
-      } catch (error) {
-        if (!active) return;
-        const apiError = error as CasaApiError;
-        if (apiError.isSessionExpired) {
-          localStorage.removeItem(SESSION_STORAGE_KEY);
-          setSession(null);
-          setView('landing');
-          setOrders([]);
-          setAvailability({});
-          showToast(apiError.message, 'error');
-        } else {
-          setConnectionState('offline');
-        }
-      } finally {
-        syncing = false;
+    const acceptLink = (url: string) => {
+      const code = eventCodeFromUrl(url);
+      if (code) {
+        setPendingSessionCode(code);
+        let saved: EventSession | null = null;
+        try { saved = JSON.parse(localStorage.getItem(SESSION_STORAGE_KEY) || 'null'); } catch { /* Ignore an invalid cache. */ }
+        if (saved?.eventCode !== code) { setSession(null); setView('guest'); }
       }
     };
-
-    void syncData();
-    const interval = window.setInterval(syncData, 2500);
-    const syncWhenVisible = () => { if (document.visibilityState === 'visible') void syncData(); };
-    document.addEventListener('visibilitychange', syncWhenVisible);
-    window.addEventListener('online', syncData);
-    return () => {
-      active = false;
-      window.clearInterval(interval);
-      document.removeEventListener('visibilitychange', syncWhenVisible);
-      window.removeEventListener('online', syncData);
-    };
-  }, [session?.token, view]);
-
-
-  // Auto-join from URL
-  useEffect(() => {
-    const code = new URLSearchParams(window.location.search).get('code');
-    if (code) { setPendingSessionCode(code.toUpperCase()); setView('guest'); }
+    acceptLink(window.location.href);
+    if (!Capacitor.isNativePlatform()) return;
+    let disposed = false;
+    const listener = CapacitorApp.addListener('appUrlOpen', event => acceptLink(event.url));
+    void CapacitorApp.getLaunchUrl().then(result => { if (!disposed && result?.url) acceptLink(result.url); });
+    return () => { disposed = true; void listener.then(handle => handle.remove()); };
   }, []);
+
+  useEffect(() => {
+    if (!session?.isBartender || !lastSyncAt) return;
+    if (hasSynced.current) {
+      const order = orders.find(item => item.status === 'pending' && !knownOrderIds.current.has(item.id));
+      if (order) { playOrderChime(); showToast(`${order.guestName} ordered ${order.cocktailName}`, 'info'); }
+    }
+    knownOrderIds.current = new Set(orders.map(item => item.id));
+    hasSynced.current = true;
+  }, [lastSyncAt]);
 
   // Guest notification
   useEffect(() => {
@@ -246,6 +198,8 @@ const App: React.FC = () => {
     }
     const newReady = orders.find(o => o.status === 'completed' && o.guestName === session.guestName && !notifiedOrders.has(o.id));
     if (newReady) {
+      setSelectedCocktail(null);
+      setIsConfirmingOrder(false);
       setPickupNotification(newReady);
       setNotifiedOrders(prev => new Set(prev).add(newReady.id));
       if (navigator.vibrate) navigator.vibrate([200, 100, 200]);
@@ -258,8 +212,9 @@ const App: React.FC = () => {
     try {
       const data = await fetchCocktailsFromSheet();
       if (data.length > 0) {
-        setCocktails(data);
-        localStorage.setItem('ceb_cocktails_v5', JSON.stringify(data));
+        const menu = data.map(cocktail => ({ ...cocktail, imageUrl: (bundledMenu as Cocktail[]).find(item => item.id === cocktail.id)?.imageUrl || cocktail.imageUrl }));
+        setCocktails(menu);
+        localStorage.setItem('casa-menu-v5', JSON.stringify(menu));
         showToast('Menu updated');
       } else {
         showToast('No cocktails found', 'info');
@@ -275,51 +230,56 @@ const App: React.FC = () => {
     setToastMessage(msg);
   }, []);
 
+  const saveSession = (next: EventSession) => {
+    localStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify(next));
+    if (next.isBartender) {
+      const bars = [next, ...savedBars.filter(bar => bar.eventCode !== next.eventCode)];
+      localStorage.setItem('casa-saved-bars-v5', JSON.stringify(bars));
+      setSavedBars(bars);
+    }
+    setSession(next);
+    setView(next.isBartender ? 'bartender' : 'guest');
+    setNotifiedOrders(new Set());
+    setHasInitializedOrders(false);
+    hasSynced.current = false;
+    knownOrderIds.current = new Set();
+  };
+
   const handleJoin = async (
-    role: 'bartender' | 'guest',
-    code: string,
-    guestName?: string,
-    guestPhone?: string,
-    pin?: string,
+    role: 'bartender' | 'guest', code: string, guestName?: string,
+    guestPhone?: string, pin?: string, guestEmail?: string,
   ) => {
-    const eventCode = (code || '').toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 12);
-    if (!eventCode || isJoining) return;
+    if (isJoining) return;
     setIsJoining(true);
     try {
-      const nextSession = role === 'bartender'
+      const eventCode = normalizeEventCode(code);
+      const next = role === 'bartender'
         ? await CasaApi.startBartenderSession(eventCode, pin || '')
-        : await CasaApi.startGuestSession(eventCode, guestName || '', guestPhone);
-      setSession(nextSession);
-      localStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify(nextSession));
-      setView(role);
-      setNotifiedOrders(new Set());
-      setHasInitializedOrders(false);
-      setConnectionState('connecting');
+        : await CasaApi.startGuestSession(eventCode, guestName || '', guestPhone, guestEmail);
+      saveSession(next);
     } catch (error) {
+      if (role === 'guest') throw error;
       showToast((error as Error).message, 'error');
-    } finally {
-      setIsJoining(false);
-    }
+    } finally { setIsJoining(false); }
+  };
+
+  const startOfflineBar = () => {
+    const code = 'BAR' + crypto.randomUUID().replaceAll('-', '').slice(0, 8).toUpperCase();
+    saveSession({ eventCode: code, isBartender: true, token: '', expiresAt: '', offlineOnly: true });
   };
 
   const handleExit = () => {
     localStorage.removeItem(SESSION_STORAGE_KEY);
     setSession(null);
     setView('landing');
-    setOrders([]);
-    setAvailability({});
     setHasInitializedOrders(false);
     setNotifiedOrders(new Set());
     setPendingSessionCode(null);
-    setConnectionState('connecting');
-    setLastSyncAt(null);
+    setPickupNotification(null);
+    setSelectedCocktail(null);
+    setIsConfirmingOrder(false);
+    guestOrderKey.current = null;
   };
-
-  useEffect(() => {
-    if (!Capacitor.isNativePlatform()) return;
-    void StatusBar.setStyle({ style: StatusBarStyle.Dark });
-    void StatusBar.setBackgroundColor({ color: '#09090b' });
-  }, []);
 
   useEffect(() => {
     if (!Capacitor.isNativePlatform()) return;
@@ -350,53 +310,45 @@ const App: React.FC = () => {
 
   const toggleAvailability = async (ingredient: string) => {
     if (!session?.isBartender || pendingToggles.current.has(ingredient)) return;
-    const isCurrentlyOut = !!availability[ingredient];
     pendingToggles.current.add(ingredient);
-    setAvailability(prev => {
-      const next = { ...prev };
-      if (isCurrentlyOut) delete next[ingredient];
-      else next[ingredient] = true;
-      return next;
-    });
     try {
-      await CasaApi.setAvailability(session.token, ingredient, isCurrentlyOut);
-    } catch (error) {
-      setAvailability(prev => {
-        const next = { ...prev };
-        if (isCurrentlyOut) next[ingredient] = true;
-        else delete next[ingredient];
-        return next;
-      });
-      showToast((error as Error).message || 'Failed to update stock.', 'error');
-    } finally {
-      pendingToggles.current.delete(ingredient);
-    }
+      await sync.queue({ kind: 'stock', key: `stock:${ingredient}`, ingredient, isAvailable: !!availability[ingredient] });
+    } catch { showToast('Could not save on this device. Free storage and try again.', 'error'); }
+    finally { pendingToggles.current.delete(ingredient); }
   };
 
   const updateOrder = async (orderId: string, status: OrderStatus) => {
     if (!session?.isBartender) return;
-    const previous = orders.find(order => order.id === orderId);
-    setOrders(prev => status === 'deleted'
-      ? prev.filter(order => order.id !== orderId)
-      : prev.map(order => (order.id === orderId ? { ...order, status } : order)));
     try {
-      await CasaApi.updateOrderStatus(session.token, orderId, status);
-      if (status === 'completed') showToast('Marked ready. The guest was notified.');
-    } catch (error) {
-      if (previous) setOrders(prev => [...prev.filter(order => order.id !== orderId), previous]);
-      showToast((error as Error).message || 'Could not update the order.', 'error');
-    }
+      await sync.queue({ kind: 'status', key: `order:${orderId}`, orderId, status });
+      showToast(connectionState === 'online' ? 'Saved. Syncing with the bar.' : 'Saved on this device. Will sync when connected.', 'info');
+    } catch { showToast('Could not save the order change on this device.', 'error'); }
+  };
+
+  const addWalkInOrder = async () => {
+    if (!session?.isBartender || !selectedCocktail || isSubmittingOrder) return;
+    setIsSubmittingOrder(true);
+    try {
+      const order: Order = { id: crypto.randomUUID(), eventCode: session.eventCode,
+        guestName: walkInName.trim() || 'Walk-in guest', cocktailId: selectedCocktail.id,
+        cocktailName: selectedCocktail.name, status: 'pending', timestamp: Date.now(), revision: 0 };
+      await sync.queue({ kind: 'order', key: `order:${order.id}`, order });
+      setSelectedCocktail(null);
+      setActiveTab('orders');
+      showToast('Walk-in order saved.');
+    } catch { showToast('Could not save the walk-in order on this device.', 'error'); }
+    finally { setIsSubmittingOrder(false); }
   };
 
   const openRecipeForOrder = (order: Order) => {
-    const cocktail = cocktails.find(c => c.id === order.cocktailId) || cocktails.find(c => c.name === order.cocktailName);
+    const cocktail = cocktails.find(c => c.name === order.cocktailName) || cocktails.find(c => c.id === order.cocktailId);
     if (cocktail) setSelectedCocktail(cocktail);
     else showToast('Recipe not found', 'error');
   };
 
   const placeOrder = async () => {
     if (!session || !selectedCocktail || isSubmittingOrder) return;
-    if (connectionState === 'offline') {
+    if (!connectivity.online || connectionState !== 'online') {
       showToast('You are offline. Reconnect to place an order.', 'error');
       return;
     }
@@ -412,7 +364,11 @@ const App: React.FC = () => {
 
     setIsSubmittingOrder(true);
     try {
-      await CasaApi.placeOrder(session.token, selectedCocktail, crypto.randomUUID());
+      guestOrderKey.current = guestRequestKey(localStorage, session.token, selectedCocktail.id);
+      await CasaApi.placeOrder(session.token, selectedCocktail, guestOrderKey.current);
+      acknowledgeGuestRequest(localStorage, session.token, selectedCocktail.id, guestOrderKey.current);
+      guestOrderKey.current = null;
+      sync.retry();
       setLastOrderTime(Date.now());
       setIsConfirmingOrder(false);
       setSelectedCocktail(null);
@@ -427,7 +383,7 @@ const App: React.FC = () => {
   const copyShoppingList = () => {
     const outOfStock = allIngredients.filter(i => availability[i]);
     if (outOfStock.length === 0) { showToast('Nothing out of stock'); return; }
-    navigator.clipboard.writeText(outOfStock.map(i => `• ${i}`).join('\n')).then(() => showToast(`Copied ${outOfStock.length} items`));
+    navigator.clipboard.writeText(outOfStock.map(i => `• ${i}`).join('\n')).then(() => showToast(`Copied ${outOfStock.length} items`)).catch(() => showToast('Clipboard unavailable. Select and copy the ingredient names instead.', 'info'));
   };
 
   // ── Derived Data ─────────────────────────────────
@@ -472,157 +428,24 @@ const App: React.FC = () => {
   // ██  LANDING PAGE  ██
   // ════════════════════════════════════════════════
   if (view === 'landing') {
-    return (
-      <div className="min-h-screen bg-zinc-950 flex flex-col items-center justify-center p-8 relative overflow-hidden">
-        {/* Ambient glow */}
-        <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_50%_40%,rgba(251,191,36,0.06)_0%,transparent_60%)]" />
-        <div className="absolute top-0 left-0 w-full h-full">
-          <div className="absolute top-[20%] left-[10%] w-72 h-72 bg-amber-500/[0.03] rounded-full blur-3xl" />
-          <div className="absolute bottom-[20%] right-[10%] w-96 h-96 bg-amber-600/[0.02] rounded-full blur-3xl" />
-        </div>
-
-        <div className="relative z-10 w-full max-w-sm flex flex-col items-center space-y-12">
-          {/* Logo & Branding */}
-          <div className="text-center space-y-6 animate-fadeIn">
-            <div className="w-24 h-24 bg-gradient-to-br from-amber-400 via-amber-500 to-amber-600 text-zinc-950 rounded-[28px] flex items-center justify-center mx-auto shadow-[0_0_60px_rgba(251,191,36,0.2)] rotate-3 hover:rotate-0 transition-transform duration-500">
-              <Wine size={48} strokeWidth={2} />
-            </div>
-            <div className="space-y-2">
-              <h1 className="text-4xl font-bold tracking-tight text-white">Casa Michele</h1>
-              <p className="text-zinc-500 text-[15px] leading-relaxed">Browse the menu. Order your cocktail.</p>
-            </div>
-          </div>
-
-          {/* CTAs */}
-          <div className="w-full space-y-3 stagger-2">
-            <button
-              onClick={() => setView('guest')}
-              className="w-full h-[60px] bg-white text-zinc-950 rounded-2xl font-semibold text-[17px] flex items-center justify-center gap-3 active:scale-[0.97] transition-all duration-200 shadow-lg shadow-white/5 hover:shadow-xl hover:shadow-white/10"
-            >
-              <Users size={20} strokeWidth={2.5} />
-              Join as Guest
-            </button>
-            <p className="text-zinc-600 text-xs text-center px-4 leading-relaxed">
-              Scan the QR code or enter the event code to order drinks
-            </p>
-            <button
-              onClick={() => setView('bartender')}
-              className="w-full h-14 bg-transparent text-zinc-500 rounded-2xl font-semibold text-[15px] flex items-center justify-center gap-2.5 border border-zinc-800/60 hover:border-zinc-700 hover:text-zinc-400 active:scale-[0.97] transition-all duration-200 mt-2"
-            >
-              <Lock size={15} />
-              Bartender Access
-            </button>
-          </div>
-        </div>
-
-        <div className="absolute bottom-6 text-zinc-800 text-[11px] font-mono">{VERSION}</div>
-        <Toast isVisible={!!toastMessage} message={toastMessage} onHide={() => setToastMessage('')} type={toastType} />
-      </div>
-    );
+    return <><Welcome onGuest={() => setView('guest')} onBartender={() => setView('bartender')} version={VERSION} />
+      <Toast isVisible={!!toastMessage} message={toastMessage} onHide={() => setToastMessage('')} type={toastType} /></>;
   }
 
   // ════════════════════════════════════════════════
   // ██  GUEST ENTRY FORM  ██
   // ════════════════════════════════════════════════
   if (view === 'guest' && !session) {
-    return (
-      <div className="min-h-screen bg-zinc-950 p-6 flex flex-col relative">
-        <button
-          onClick={() => setView('landing')}
-          className="w-10 h-10 flex items-center justify-center rounded-full bg-zinc-900 text-zinc-400 hover:text-white transition-colors"
-        >
-          <ArrowLeft size={20} />
-        </button>
-
-        <div className="flex-1 flex flex-col justify-center max-w-md mx-auto w-full py-8 animate-slideUp">
-          <div className="space-y-2 mb-8">
-            <h2 className="text-3xl font-bold text-white tracking-tight">Join the party</h2>
-            <p className="text-zinc-500 text-[15px]">Enter your details to start ordering</p>
-          </div>
-
-          <form
-            onSubmit={(e) => {
-              e.preventDefault();
-              const fd = new FormData(e.currentTarget);
-              handleJoin('guest', (pendingSessionCode || fd.get('code') as string), fd.get('name') as string, guestPhoneInput);
-            }}
-            className="space-y-4"
-          >
-            <div className="space-y-3">
-              <input
-                name="name"
-                placeholder="Your name"
-                required
-                autoFocus
-                maxLength={60}
-                autoComplete="name"
-                className="input-field h-14 text-[17px]"
-              />
-
-              <div className="w-full">
-                <PhoneInput
-                  defaultCountry="us"
-                  value={guestPhoneInput}
-                  onChange={setGuestPhoneInput}
-                  inputClassName="!w-full !h-14 !bg-zinc-900 !text-white !text-base !border-none !ring-0 focus:!ring-0 placeholder:!text-zinc-600 !pl-3"
-                  className="rounded-2xl ring-1 ring-zinc-700/60 focus-within:ring-2 focus-within:ring-amber-500/50 bg-zinc-900 relative transition-all"
-                  countrySelectorStyleProps={{
-                    buttonClassName: '!bg-zinc-900 !border-none !h-14 !rounded-l-2xl !pl-4',
-                    dropdownStyleProps: {
-                      className: '!bg-zinc-900 !text-white !border-zinc-800 !rounded-xl !shadow-xl !z-50',
-                      listItemClassName: 'hover:!bg-zinc-800 !text-white',
-                    },
-                  }}
-                  style={{
-                    '--react-international-phone-background-color': '#18181b',
-                    '--react-international-phone-text-color': '#fff',
-                    '--react-international-phone-border-color': 'transparent',
-                    '--react-international-phone-height': '56px',
-                    '--react-international-phone-font-size': '1rem',
-                    '--react-international-phone-border-radius': '0',
-                  } as React.CSSProperties}
-                />
-              </div>
-
-              {!pendingSessionCode ? (
-                <input
-                  name="code"
-                  placeholder="Event code"
-                  required
-                  minLength={4}
-                  maxLength={12}
-                  pattern="[A-Za-z0-9]+"
-                  autoCapitalize="characters"
-                  className="input-field h-14 text-[17px] font-semibold tracking-widest text-center uppercase"
-                  autoComplete="one-time-code"
-                />
-              ) : (
-                <div className="h-14 px-5 bg-zinc-800/40 text-zinc-400 rounded-2xl flex items-center justify-between border border-zinc-800/60">
-                  <span className="text-sm">Joining session</span>
-                  <span className="text-lg font-bold tracking-widest text-white">{pendingSessionCode}</span>
-                </div>
-              )}
-            </div>
-
-            <Button type="submit" disabled={isJoining} className="h-[56px] bg-amber-500 text-zinc-950 font-semibold text-[17px] rounded-2xl mt-2">
-              {isJoining ? 'Joining...' : 'Enter Bar'}
-            </Button>
-          </form>
-        </div>
-
-        <Toast isVisible={!!toastMessage} message={toastMessage} onHide={() => setToastMessage('')} type={toastType} />
-      </div>
-    );
+    return <GuestEntry code={pendingSessionCode} busy={isJoining} online={connectivity.online} checked={connectivity.checked}
+      onBack={() => setView('landing')} onRetry={() => void connectivity.check()}
+      onJoin={(code, name, phone, email) => handleJoin('guest', code, name, phone, undefined, email)} />;
   }
 
-  // ════════════════════════════════════════════════
-  // ██  BARTENDER LOGIN  ██
-  // ════════════════════════════════════════════════
   if (view === 'bartender' && !session) {
     return (
       <div className="min-h-screen bg-zinc-950 p-6 flex flex-col relative">
         <button
-          onClick={() => setView('landing')}
+          aria-label="Back to start" onClick={() => setView('landing')}
           className="w-10 h-10 flex items-center justify-center rounded-full bg-zinc-900 text-zinc-400 hover:text-white transition-colors"
         >
           <ArrowLeft size={20} />
@@ -631,7 +454,13 @@ const App: React.FC = () => {
         <div className="flex-1 flex flex-col justify-center max-w-md mx-auto w-full py-8 animate-slideUp">
           <div className="space-y-2 mb-8">
             <h2 className="text-3xl font-bold text-white tracking-tight">Bartender Access</h2>
-            <p className="text-zinc-500 text-[15px]">Start a new event or resume one with the shared bartender password</p>
+            <p className="text-zinc-400 text-[15px]">Start a new event or resume one with the shared bartender password</p>
+            <button onClick={startOfflineBar} className="w-full min-h-14 rounded-xl border border-amber-500/40 text-amber-300 p-4 mt-4">Start a local offline bar</button>
+            <p className="text-xs text-zinc-400">Use the bundled menu now. Connect this bar to an online event later.</p>
+            {savedBars.length > 0 && <div className="space-y-2 pt-4">
+              <h3 className="text-sm font-semibold text-zinc-300">Saved bars on this device</h3>
+              {savedBars.map(bar => <button key={bar.eventCode} onClick={() => saveSession(bar)} className="block w-full text-left min-h-12 p-3 rounded-xl bg-zinc-900 text-amber-300">Resume {bar.eventCode}</button>)}
+            </div>}
           </div>
 
           <form
@@ -643,7 +472,7 @@ const App: React.FC = () => {
             }}
             className="space-y-4"
           >
-            <input
+            <label className="block text-sm font-medium">Event code<input
               name="code"
               placeholder="Event code"
               required
@@ -653,9 +482,9 @@ const App: React.FC = () => {
               pattern="[A-Za-z0-9]+"
               autoCapitalize="characters"
               autoComplete="username"
-              className="input-field h-14 text-[17px] font-semibold tracking-widest text-center uppercase"
-            />
-            <div className="relative">
+              className="input-field mt-2 uppercase tracking-wider"
+            /></label>
+            <label className="block text-sm font-medium">Bartender password<div className="relative mt-2">
               <input
                 name="password"
                 type="password"
@@ -663,14 +492,14 @@ const App: React.FC = () => {
                 required
                 maxLength={64}
                 autoComplete="current-password"
-                className="input-field h-14 text-[17px] text-center"
+                className="input-field pr-14"
               />
-              <div className="absolute right-5 top-1/2 -translate-y-1/2 text-zinc-600">
+              <div className="absolute right-5 top-1/2 -translate-y-1/2 text-zinc-400">
                 <Lock size={18} />
               </div>
-            </div>
-            <Button type="submit" disabled={isJoining} className="h-[56px] bg-white text-zinc-950 font-semibold text-[17px] rounded-2xl mt-2">
-              {isJoining ? 'Securing event...' : 'Start / Sign In'}
+            </div></label>
+            <Button type="submit" disabled={isJoining} className="h-[56px] bg-amber-500 text-zinc-950 font-semibold text-[17px] rounded-xl mt-2">
+              {isJoining ? 'Opening event...' : 'Open event'}
             </Button>
           </form>
         </div>
@@ -683,18 +512,29 @@ const App: React.FC = () => {
   // ════════════════════════════════════════════════
   // ██  GUEST MENU VIEW  ██
   // ════════════════════════════════════════════════
+  if (view === 'guest' && session && (!connectivity.online || connectionState !== 'online')) {
+    return <main className="min-h-screen bg-zinc-950 p-6 flex items-center justify-center">
+      <div className="max-w-sm space-y-5 text-center">
+        <h1 className="text-2xl font-bold">{!connectivity.checked || connectionState === 'connecting' ? 'Connecting to the bar...' : connectionState === 'expired' ? 'Join the event again' : 'Internet needed for guests'}</h1>
+        <p className="text-zinc-400">{connectionState === 'expired' ? 'Your guest session has ended.' : 'Reconnect to see the live menu and send orders. The bartender can continue working offline.'}</p>
+        <Button onClick={() => { void connectivity.check(); sync.retry(); }}>Try again</Button>
+        <Button variant="secondary" onClick={handleExit}>Back to start</Button>
+      </div>
+    </main>;
+  }
+
   if (view === 'guest' && session) {
     const myOrders = orders.filter(o => o.guestName === session.guestName);
     const lastOrder = myOrders.length > 0 ? [...myOrders].sort((a, b) => b.timestamp - a.timestamp)[0] : null;
     const isUnavailable = selectedCocktail?.ingredients.some(i => availability[i]);
 
     return (
-      <div className="min-h-screen bg-zinc-950 flex flex-col">
+      <div className="app-shell min-h-screen bg-zinc-950 flex flex-col">
         {/* Header */}
         <header className="px-5 py-4 flex justify-between items-center border-b border-zinc-800/50 glass sticky top-0 z-30">
           <div className="flex items-center gap-2.5">
-            <span className={`w-2 h-2 rounded-full ${connectionState === 'online' ? 'bg-emerald-500' : connectionState === 'offline' ? 'bg-red-500' : 'bg-amber-500'} ${connectionState !== 'offline' ? 'animate-gentlePulse' : ''}`} />
-            <span className="text-[11px] font-semibold text-zinc-400 uppercase tracking-widest">{session.eventCode} - {connectionState}</span>
+            <span className={`w-2 h-2 rounded-full ${connectionState === 'online' ? 'bg-emerald-500' : connectionState === 'offline' ? 'bg-red-500' : 'bg-amber-500'} ${connectionState !== 'offline' ? '' : ''}`} />
+            <span className="text-xs font-medium text-zinc-300 tracking-wide">Event {session.eventCode}</span>
           </div>
           <button
             onClick={handleExit}
@@ -707,9 +547,9 @@ const App: React.FC = () => {
         {/* Last order banner */}
         {lastOrder && (
           <div className="px-4 pt-4 animate-slideUp">
-            <div className="bg-amber-500/8 border border-amber-500/15 p-4 rounded-2xl flex items-center justify-between">
+            <div className="bg-amber-500/8 border border-amber-500/15 p-4 rounded-xl flex items-center justify-between">
               <div>
-                <p className="text-amber-500/70 text-[10px] font-semibold uppercase tracking-widest mb-1">Last order</p>
+                <p className="text-amber-300 text-xs font-semibold uppercase tracking-widest mb-1">Last order</p>
                 <p className="text-white font-semibold text-sm">{lastOrder.cocktailName}</p>
               </div>
               <Badge variant={lastOrder.status === 'completed' ? 'success' : 'neutral'}>
@@ -720,27 +560,27 @@ const App: React.FC = () => {
         )}
 
         {/* Search & Filters */}
-        <div className="sticky top-[57px] z-20 bg-zinc-950/90 backdrop-blur-xl pt-5 pb-2 space-y-3">
+        <div className="sticky top-[65px] z-20 bg-zinc-950/90 backdrop-blur-xl pt-5 pb-2 space-y-3">
           <div className="px-4 space-y-1">
-            <h2 className="text-[22px] font-bold text-white tracking-tight">Menu</h2>
-            <p className="text-zinc-500 text-[13px]">
+            <p className="eyebrow text-amber-400">CASA MICHELE</p><h1 className="menu-title">The cocktail menu</h1>
+            <p className="text-zinc-400 text-[13px]">
               {filteredGuestCocktails.length} cocktail{filteredGuestCocktails.length !== 1 ? 's' : ''} available
             </p>
           </div>
 
           <div className="px-4 flex gap-2">
             <div className="relative flex-1">
-              <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 text-zinc-500" size={16} />
+              <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 text-zinc-400" size={16} />
               <input
                 type="text"
-                placeholder="Search cocktails..."
+                aria-label="Search cocktails" placeholder="Search cocktails..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full h-11 pl-10 pr-4 bg-zinc-900/80 rounded-xl ring-1 ring-zinc-800/60 focus:ring-2 focus:ring-amber-500/40 outline-none transition-all text-sm text-white placeholder:text-zinc-600"
+                className="w-full h-11 pl-10 pr-4 bg-zinc-900/80 rounded-xl ring-1 ring-zinc-800/60 focus:ring-2 focus:ring-amber-500/40 outline-none transition-all text-sm text-white placeholder:text-zinc-400"
               />
             </div>
             <button
-              onClick={() => setGuestViewMode(guestViewMode === 'grid' ? 'list' : 'grid')}
+              aria-label="Change menu layout" onClick={() => setGuestViewMode(guestViewMode === 'grid' ? 'list' : 'grid')}
               className="h-11 w-11 flex items-center justify-center bg-zinc-900/80 rounded-xl ring-1 ring-zinc-800/60 text-zinc-400 active:scale-95 transition-all"
             >
               {guestViewMode === 'grid' ? <ListIcon size={17} /> : <LayoutGrid size={17} />}
@@ -750,7 +590,7 @@ const App: React.FC = () => {
           {/* Spirit pills */}
           <div className="scroll-x py-1 px-4">
             <button
-              onClick={() => setGuestShowUnavailable(!guestShowUnavailable)}
+              aria-pressed={guestShowUnavailable} onClick={() => setGuestShowUnavailable(!guestShowUnavailable)}
               className={`pill ${guestShowUnavailable ? 'bg-red-500/15 text-red-400 border-red-500/30' : 'pill-inactive'}`}
             >
               {guestShowUnavailable ? <Eye size={13} /> : <EyeOff size={13} />}
@@ -760,7 +600,7 @@ const App: React.FC = () => {
             {SPIRITS_LIST.map(spirit => (
               <button
                 key={spirit}
-                onClick={() => setActiveGuestSpirits(prev => prev.includes(spirit) ? prev.filter(s => s !== spirit) : [...prev, spirit])}
+                aria-pressed={activeGuestSpirits.includes(spirit)} onClick={() => setActiveGuestSpirits(prev => prev.includes(spirit) ? prev.filter(s => s !== spirit) : [...prev, spirit])}
                 className={`pill ${activeGuestSpirits.includes(spirit) ? 'pill-active' : 'pill-inactive'}`}
               >
                 {spirit}
@@ -770,12 +610,12 @@ const App: React.FC = () => {
 
           {allTasteProfiles.length > 0 && (
             <div className="scroll-x py-0.5 px-4 -mt-1">
-              <Tag size={12} className="text-zinc-600 shrink-0 self-center" />
+              <Tag size={12} className="text-zinc-400 shrink-0 self-center" />
               {allTasteProfiles.map(profile => (
                 <button
                   key={profile}
-                  onClick={() => setActiveTasteProfiles(prev => prev.includes(profile) ? prev.filter(p => p !== profile) : [...prev, profile])}
-                  className={`pill text-[10px] ${activeTasteProfiles.includes(profile) ? 'bg-zinc-100 text-zinc-950 border-zinc-100' : 'pill-inactive'}`}
+                  aria-pressed={activeTasteProfiles.includes(profile)} onClick={() => setActiveTasteProfiles(prev => prev.includes(profile) ? prev.filter(p => p !== profile) : [...prev, profile])}
+                  className={`pill text-xs ${activeTasteProfiles.includes(profile) ? 'bg-zinc-100 text-zinc-950 border-zinc-100' : 'pill-inactive'}`}
                 >
                   {profile}
                 </button>
@@ -785,11 +625,11 @@ const App: React.FC = () => {
         </div>
 
         {/* Cocktail Grid/List */}
-        <div className={`flex-1 overflow-y-auto p-4 pb-20 ${guestViewMode === 'grid' ? 'grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3 auto-rows-max' : 'flex flex-col gap-2'}`}>
+        <main className={`flex-1 overflow-y-auto p-4 pb-20 ${guestViewMode === 'grid' ? 'grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3 auto-rows-max' : 'flex flex-col gap-2'}`}>
           {filteredGuestCocktails.length === 0 ? (
             <div className="col-span-full py-24 text-center space-y-3 animate-fadeIn">
               <Wine size={40} className="mx-auto text-zinc-700" />
-              <p className="text-zinc-500 text-sm font-medium">No matching cocktails</p>
+              <p className="text-zinc-400 text-sm font-medium">No matching cocktails</p>
               {!guestShowUnavailable && (
                 <button onClick={() => setGuestShowUnavailable(true)} className="text-amber-500 text-xs font-semibold underline underline-offset-2">
                   Show sold out items
@@ -804,16 +644,17 @@ const App: React.FC = () => {
                 return (
                   <div
                     key={c.id}
-                    onClick={() => setSelectedCocktail(c)}
+                    role="button" tabIndex={0} aria-label={`View ${c.name}`} onKeyDown={event => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); setSelectedCocktail(c); } }}
+                  onClick={() => { guestOrderKey.current = null; setSelectedCocktail(c); }}
                     className={`group card-elevated overflow-hidden flex flex-col cursor-pointer ${isOut ? 'opacity-40 grayscale' : ''}`}
-                    style={{ animationDelay: `${Math.min(idx * 30, 300)}ms`, borderRadius: 20 }}
+                    style={{ borderRadius: 12 }}
                   >
                     <div className="aspect-square bg-zinc-800 relative overflow-hidden">
                       {c.imageUrl ? (
                         <img
                           src={c.imageUrl}
-                          alt={c.name}
-                          className="w-full h-full object-cover object-[center_60%] transition-transform duration-500 group-hover:scale-105"
+                          alt=""
+                          className="w-full h-full object-cover object-[center_60%] "
                           loading="lazy"
                           onError={(e) => {
                             const img = e.target as HTMLImageElement;
@@ -822,8 +663,8 @@ const App: React.FC = () => {
                           }}
                         />
                       ) : null}
-                      <div className={`fallback-placeholder ${c.imageUrl ? 'hidden' : ''} absolute inset-0 bg-gradient-to-br from-zinc-700/60 via-zinc-800 to-zinc-900 flex items-center justify-center`}>
-                        <span className="text-3xl font-bold text-zinc-600">{c.name.charAt(0)}</span>
+                      <div className={`fallback-placeholder ${c.imageUrl ? 'hidden' : ''} absolute inset-0 bg-zinc-800 flex items-center justify-center`}>
+                        <span className="text-3xl font-bold text-zinc-400">{c.name.charAt(0)}</span>
                       </div>
                       <div className="absolute inset-0 bg-gradient-to-t from-zinc-950/60 via-transparent to-transparent" />
                       {isOut && (
@@ -832,15 +673,15 @@ const App: React.FC = () => {
                         </div>
                       )}
                     </div>
-                    <div className="p-3 space-y-1 flex-1 flex flex-col justify-center">
-                      <h3 className="text-[13px] font-semibold text-white leading-tight line-clamp-2">{c.name}</h3>
-                      <p className="text-zinc-500 text-[10px] font-medium truncate">
+                    <div className="p-4 space-y-1.5 flex-1 flex flex-col justify-center">
+                      <h3 className="text-[15px] font-semibold text-white leading-snug line-clamp-2">{c.name}</h3>
+                      <p className="text-zinc-400 text-xs font-medium truncate">
                         {c.ingredients.filter(i => categorizeIngredient(i) === 'Spirit').join(' · ') || 'House Mix'}
                       </p>
                       {c.tasteProfiles?.length > 0 && (
                         <div className="flex flex-wrap gap-1 mt-0.5">
                           {c.tasteProfiles.slice(0, 2).map(p => (
-                            <span key={p} className="text-[9px] font-medium text-zinc-400 bg-zinc-800/60 px-1.5 py-0.5 rounded-md">
+                            <span key={p} className="text-[11px] font-medium text-zinc-400 bg-zinc-800/60 px-1.5 py-0.5 rounded-md">
                               {p}
                             </span>
                           ))}
@@ -854,21 +695,22 @@ const App: React.FC = () => {
               return (
                 <div
                   key={c.id}
-                  onClick={() => setSelectedCocktail(c)}
+                  role="button" tabIndex={0} aria-label={`View ${c.name}`} onKeyDown={event => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); setSelectedCocktail(c); } }}
+                  onClick={() => { guestOrderKey.current = null; setSelectedCocktail(c); }}
                   className={`flex items-center gap-3.5 p-3 card-flat cursor-pointer ${isOut ? 'opacity-40 grayscale' : ''}`}
                 >
                   <div className="h-14 w-14 shrink-0 rounded-xl overflow-hidden bg-zinc-800 relative flex items-center justify-center">
                     {c.imageUrl ? (
-                      <img src={c.imageUrl} alt={c.name} className="w-full h-full object-cover" loading="lazy"
+                      <img src={c.imageUrl} alt="" className="w-full h-full object-cover" loading="lazy"
                         onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />
                     ) : (
-                      <span className="text-lg font-bold text-zinc-600">{c.name.charAt(0)}</span>
+                      <span className="text-lg font-bold text-zinc-400">{c.name.charAt(0)}</span>
                     )}
                     {isOut && <div className="absolute inset-0 bg-black/60 flex items-center justify-center"><X size={12} className="text-red-400" /></div>}
                   </div>
                   <div className="flex-1 min-w-0">
                     <h3 className="text-sm font-semibold text-white truncate">{c.name}</h3>
-                    <p className="text-zinc-500 text-[11px] font-medium truncate">
+                    <p className="text-zinc-400 text-[11px] font-medium truncate">
                       {c.ingredients.filter(i => categorizeIngredient(i) === 'Spirit').join(' · ') || 'House Mix'}
                     </p>
                   </div>
@@ -877,33 +719,19 @@ const App: React.FC = () => {
               );
             })
           )}
-        </div>
+        </main>
 
         {/* Toast */}
         <Toast isVisible={!!toastMessage} message={toastMessage} onHide={() => setToastMessage('')} type={toastType} />
 
-        {/* Pickup notification */}
-        {pickupNotification && (
-          <div className="fixed inset-0 z-[100] flex items-center justify-center p-6 bg-black/70 backdrop-blur-md animate-fadeIn">
-            <div className="bg-zinc-900 border border-zinc-800/60 p-8 rounded-[32px] w-full max-w-sm text-center space-y-6 shadow-2xl animate-scaleIn">
-              <div className="w-20 h-20 bg-emerald-500 rounded-full flex items-center justify-center mx-auto text-white shadow-[0_0_40px_rgba(34,197,94,0.3)] animate-ringPulse">
-                <Bell size={36} strokeWidth={2.5} />
-              </div>
-              <div className="space-y-2">
-                <h3 className="text-2xl font-bold text-white">Your drink is ready!</h3>
-                <p className="text-zinc-400 text-[15px] leading-relaxed">
-                  <span className="text-amber-400 font-semibold">{pickupNotification.cocktailName}</span> is waiting for you at the bar.
-                </p>
-              </div>
-              <button
-                onClick={() => setPickupNotification(null)}
-                className="w-full h-14 bg-white text-zinc-950 rounded-2xl font-semibold text-base active:scale-[0.97] transition-transform"
-              >
-                On my way!
-              </button>
-            </div>
+        <BottomSheet isOpen={!!pickupNotification} onClose={() => setPickupNotification(null)} title="Your drink is ready"
+          footer={<Button onClick={() => setPickupNotification(null)}>On my way</Button>}>
+          <div className="text-center py-8 space-y-4">
+            <Bell size={32} strokeWidth={1.5} className="text-amber-400 mx-auto" />
+            <p className="text-xl font-semibold">{pickupNotification?.cocktailName}</p>
+            <p className="text-zinc-300">Collect your cocktail at the bar.</p>
           </div>
-        )}
+        </BottomSheet>
 
         {/* Cocktail detail */}
         <BottomSheet isOpen={!!selectedCocktail && !isConfirmingOrder} onClose={() => setSelectedCocktail(null)} title={selectedCocktail?.name || ''}
@@ -911,16 +739,16 @@ const App: React.FC = () => {
             <Button
               onClick={() => setIsConfirmingOrder(true)}
               disabled={!!isUnavailable}
-              className={isUnavailable ? 'bg-zinc-800 text-zinc-500' : 'bg-amber-500 text-zinc-950 h-[52px] font-semibold'}
+              className={isUnavailable ? 'bg-zinc-800 text-zinc-400' : 'bg-amber-500 text-zinc-950 h-[52px] font-semibold'}
             >
               {isUnavailable ? 'Currently Unavailable' : 'Order This Cocktail'}
             </Button>
           }
         >
           <div className="space-y-5 max-w-2xl mx-auto">
-            <div className="aspect-[16/10] rounded-2xl overflow-hidden bg-zinc-800 relative flex items-center justify-center">
+            <div className="aspect-[16/10] rounded-xl overflow-hidden bg-zinc-800 relative flex items-center justify-center">
               {selectedCocktail?.imageUrl ? (
-                <img src={selectedCocktail.imageUrl} className="w-full h-full object-cover object-[center_60%]" loading="lazy"
+                <img src={selectedCocktail.imageUrl} alt={selectedCocktail.name} className="w-full h-full object-cover object-[center_60%]" loading="lazy"
                   onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />
               ) : (
                 <Wine size={48} className="text-zinc-700" />
@@ -928,7 +756,7 @@ const App: React.FC = () => {
               {selectedCocktail?.tasteProfiles?.length > 0 && (
                 <div className="absolute top-3 left-3 flex gap-1.5 flex-wrap">
                   {selectedCocktail.tasteProfiles.map(p => (
-                    <span key={p} className="px-2.5 py-1 bg-black/50 backdrop-blur-md text-white text-[10px] font-semibold uppercase tracking-wider rounded-lg border border-white/10">
+                    <span key={p} className="px-2.5 py-1 bg-black/50 backdrop-blur-md text-white text-xs font-semibold uppercase tracking-wider rounded-lg border border-white/10">
                       {p}
                     </span>
                   ))}
@@ -937,12 +765,12 @@ const App: React.FC = () => {
             </div>
             {selectedCocktail?.description && (
               <div className="space-y-1.5">
-                <h4 className="text-[11px] font-semibold text-zinc-500 uppercase tracking-wider">About</h4>
+                <h4 className="text-[11px] font-semibold text-zinc-400 uppercase tracking-wider">About</h4>
                 <p className="text-zinc-300 text-sm leading-relaxed">{selectedCocktail.description}</p>
               </div>
             )}
             <div className="space-y-2">
-              <h4 className="text-[11px] font-semibold text-zinc-500 uppercase tracking-wider">Ingredients</h4>
+              <h4 className="text-[11px] font-semibold text-zinc-400 uppercase tracking-wider">Ingredients</h4>
               <div className="space-y-1.5">
                 {selectedCocktail?.ingredients.filter(i => i.length > 1).map(ing => (
                   <div key={ing} className={`flex items-center gap-3 p-3 rounded-xl text-sm ${
@@ -950,7 +778,7 @@ const App: React.FC = () => {
                   }`}>
                     {availability[ing] ? <X size={14} className="shrink-0" /> : <Check size={14} className="text-emerald-500 shrink-0" />}
                     <span className="font-medium">{ing}</span>
-                    {availability[ing] && <span className="ml-auto text-[9px] font-semibold uppercase text-red-500/70">Out</span>}
+                    {availability[ing] && <span className="ml-auto text-[11px] font-semibold uppercase text-red-500/70">Out</span>}
                   </div>
                 ))}
               </div>
@@ -963,16 +791,16 @@ const App: React.FC = () => {
           footer={
             <div className="flex flex-col gap-2 max-w-sm mx-auto w-full">
               <Button onClick={placeOrder} disabled={isSubmittingOrder || connectionState === 'offline'} className="bg-amber-500 text-zinc-950 h-[52px] font-semibold">{isSubmittingOrder ? 'Sending...' : 'Confirm Order'}</Button>
-              <Button onClick={() => setIsConfirmingOrder(false)} disabled={isSubmittingOrder} variant="ghost" className="text-zinc-500 h-10 text-sm">Cancel</Button>
+              <Button onClick={() => setIsConfirmingOrder(false)} disabled={isSubmittingOrder} variant="ghost" className="text-zinc-400 h-10 text-sm">Cancel</Button>
             </div>
           }
         >
           <div className="py-6 text-center space-y-4">
-            <div className="w-16 h-16 bg-amber-500/10 text-amber-500 rounded-2xl flex items-center justify-center mx-auto">
+            <div className="w-16 h-16 bg-amber-500/10 text-amber-500 rounded-xl flex items-center justify-center mx-auto">
               <Beer size={32} />
             </div>
             <div className="space-y-1">
-              <p className="text-zinc-500 text-xs uppercase tracking-wider font-semibold">Ordering</p>
+              <p className="text-zinc-400 text-xs uppercase tracking-wider font-semibold">Ordering</p>
               <p className="text-xl font-bold text-white">{selectedCocktail?.name}</p>
             </div>
           </div>
@@ -986,81 +814,64 @@ const App: React.FC = () => {
   // ════════════════════════════════════════════════
   if (view === 'bartender' && session) {
     return (
-      <div className="min-h-screen bg-zinc-950 flex flex-col">
+      <div className="app-shell min-h-screen bg-zinc-950 flex flex-col">
         {/* Header */}
         <header className="px-5 py-3.5 glass border-b border-zinc-800/40 flex justify-between items-center sticky top-0 z-40">
           <div className="flex items-center gap-3">
-            <div className="w-9 h-9 bg-gradient-to-br from-amber-400 to-amber-600 rounded-xl flex items-center justify-center text-zinc-950 shadow-lg shadow-amber-500/15">
+            <div className="w-9 h-9 bg-amber-500 rounded-xl flex items-center justify-center text-zinc-950 ">
               <Wine size={17} strokeWidth={2.5} />
             </div>
             <div>
-              <h1 className="text-[15px] font-bold text-white tracking-tight leading-none">{session.eventCode}</h1>
-              <p className={`text-[10px] font-medium mt-0.5 ${connectionState === 'offline' ? 'text-red-400' : 'text-zinc-500'}`}>{connectionState === 'online' ? 'Live - synced just now' : connectionState === 'offline' ? 'Offline - reconnecting' : 'Connecting...'}</p>
+              <h1 className="text-[15px] font-semibold text-white tracking-tight leading-none">Casa Michele</h1>
+              <p className={`text-xs font-medium mt-0.5 text-zinc-400`}>{session.eventCode} · Bar workspace</p>
             </div>
           </div>
           <div className="flex gap-1.5">
-            <button onClick={() => setShowQrCode(true)} className="w-9 h-9 flex items-center justify-center rounded-xl bg-zinc-800/60 text-zinc-400 hover:text-white transition-colors active:scale-95">
+            <button aria-label="Share event QR code" onClick={() => setShowQrCode(true)} className="w-11 h-11 flex items-center justify-center rounded-xl bg-zinc-800/60 text-zinc-400 hover:text-white transition-colors active:scale-95">
               <QrCode size={17} />
             </button>
-            <button onClick={refreshData} className="w-9 h-9 flex items-center justify-center rounded-xl bg-zinc-800/60 text-zinc-400 hover:text-white transition-colors active:scale-95">
+            <button aria-label="Refresh menu" onClick={refreshData} className="w-11 h-11 flex items-center justify-center rounded-xl bg-zinc-800/60 text-zinc-400 hover:text-white transition-colors active:scale-95">
               <RefreshCw size={17} className={isRefreshing ? 'animate-spin' : ''} />
             </button>
-            <button onClick={handleExit} className="w-9 h-9 flex items-center justify-center rounded-xl bg-zinc-800/60 text-zinc-400 hover:text-white transition-colors active:scale-95">
+            <button aria-label="Leave event" onClick={handleExit} className="w-11 h-11 flex items-center justify-center rounded-xl bg-zinc-800/60 text-zinc-400 hover:text-white transition-colors active:scale-95">
               <X size={17} />
             </button>
           </div>
         </header>
+        <SyncStatus session={session} connection={connectionState} pending={sync.pending} savedAt={lastSyncAt}
+          syncError={sync.error} onSession={saveSession} onResolve={sync.resolve} onRetry={sync.retry} />
 
-        {/* QR Modal */}
-        {showQrCode && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-6 overlay" onClick={() => setShowQrCode(false)}>
-            <div className="bg-white p-8 rounded-[28px] w-full max-w-sm flex flex-col items-center space-y-5 animate-scaleIn" onClick={e => e.stopPropagation()}>
-              <div className="text-center space-y-1">
-                <h3 className="text-xl font-bold text-zinc-950">Share Session</h3>
-                <p className="text-zinc-500 text-sm">Guests can scan to join</p>
-              </div>
-              <div className="p-3 bg-white rounded-2xl">
-                <QRCodeSVG
-                  value={`${Capacitor.isNativePlatform() ? 'https://casa-michele.mic-gritzbach.workers.dev' : window.location.origin}?code=${session.eventCode}`}
-                  size={180}
-                  level="H"
-                  includeMargin
-                />
-              </div>
-              <div className="w-full bg-zinc-100 p-4 rounded-xl text-center">
-                <p className="text-zinc-400 text-[10px] font-semibold uppercase tracking-widest mb-1">Session Code</p>
-                <p className="text-2xl font-bold text-zinc-950 tracking-[0.15em]">{session.eventCode}</p>
-              </div>
-              <button
-                onClick={() => setShowQrCode(false)}
-                className="w-full h-12 bg-zinc-950 text-white rounded-2xl font-semibold active:scale-[0.97] transition-transform"
-              >
-                Done
-              </button>
-            </div>
+
+        <BottomSheet isOpen={showQrCode} onClose={() => setShowQrCode(false)} title="Invite your guests"
+          footer={<Button onClick={() => setShowQrCode(false)}>Done</Button>}>
+          <div className="flex flex-col items-center gap-5 text-center py-4">
+            <p className="text-sm text-zinc-300">{session.offlineOnly ? 'Connect this bar online before inviting guests.' : 'Scan on any phone to open this event.'}</p>
+            <div className="p-4 bg-white rounded-lg"><QRCodeSVG title={`Join Casa Michele event ${session.eventCode}`} value={eventJoinUrl(session.eventCode)} size={200} level="H" includeMargin /></div>
+            <div><p className="eyebrow text-zinc-400 mb-2">EVENT CODE</p><p className="text-2xl font-semibold tracking-[.15em] text-amber-300">{session.eventCode}</p></div>
+            <a href={eventJoinUrl(session.eventCode)} target="_blank" rel="noopener noreferrer" className="text-sm text-amber-300 underline min-h-11">Open guest link</a>
           </div>
-        )}
+        </BottomSheet>
 
         {/* Content */}
-        <div className="flex-1 overflow-y-auto pb-24">
+        <main className="flex-1 overflow-y-auto pb-24">
           {/* ── STOCK TAB ── */}
           {activeTab === 'ingredients' && (
             <div>
-              <div className="sticky top-[57px] z-20 bg-zinc-950/90 backdrop-blur-xl p-4 space-y-3 border-b border-zinc-800/30">
+              <div className="bg-zinc-950 p-4 space-y-3 border-b border-zinc-800/30">
                 <div className="relative">
-                  <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 text-zinc-500" size={16} />
+                  <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 text-zinc-400" size={16} />
                   <input
                     type="text"
-                    placeholder="Search ingredients..."
+                    aria-label="Search ingredients" placeholder="Search ingredients..."
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
-                    className="w-full h-11 pl-10 pr-4 bg-zinc-900/80 rounded-xl ring-1 ring-zinc-800/60 focus:ring-2 focus:ring-amber-500/40 outline-none transition-all text-sm text-white placeholder:text-zinc-600"
+                    className="w-full h-11 pl-10 pr-4 bg-zinc-900/80 rounded-xl ring-1 ring-zinc-800/60 focus:ring-2 focus:ring-amber-500/40 outline-none transition-all text-sm text-white placeholder:text-zinc-400"
                   />
                 </div>
 
                 <div className="flex flex-wrap gap-1.5">
                   <button
-                    onClick={() => setFilterUnavailableOnly(!filterUnavailableOnly)}
+                    aria-pressed={filterUnavailableOnly} onClick={() => setFilterUnavailableOnly(!filterUnavailableOnly)}
                     className={`pill ${filterUnavailableOnly ? 'bg-red-500/15 text-red-400 border-red-500/30' : 'pill-inactive'}`}
                   >
                     Out Only{outOfStockCount > 0 ? ` (${outOfStockCount})` : ''}
@@ -1073,8 +884,8 @@ const App: React.FC = () => {
                   {INGREDIENT_CATEGORIES.map(cat => (
                     <button
                       key={cat}
-                      onClick={() => setActiveCategories(prev => prev.includes(cat) ? prev.filter(c => c !== cat) : [...prev, cat])}
-                      className={`pill ${activeCategories.includes(cat) ? 'bg-zinc-100 text-zinc-950 border-zinc-100' : 'pill-inactive'}`}
+                      aria-pressed={activeCategories.includes(cat)} onClick={() => setActiveCategories(prev => prev.includes(cat) ? prev.filter(c => c !== cat) : [...prev, cat])}
+                      className={`pill ${activeCategories.includes(cat) ? 'pill-active' : 'pill-inactive'}`}
                     >
                       {cat}
                     </button>
@@ -1088,7 +899,7 @@ const App: React.FC = () => {
                   return (
                     <div
                       key={ing}
-                      className={`flex items-center justify-between h-[56px] px-4 rounded-2xl cursor-pointer transition-all duration-200 border select-none ${
+                      className={`flex items-center justify-between h-[56px] px-4 rounded-xl cursor-pointer transition-all duration-200 border select-none ${
                         isOut
                           ? 'bg-red-500/5 border-red-500/15 hover:bg-red-500/10'
                           : 'bg-zinc-900/60 border-zinc-800/50 hover:bg-zinc-800/60'
@@ -1096,9 +907,9 @@ const App: React.FC = () => {
                     >
                       <div className="flex flex-col">
                         <span className={`text-[13px] font-semibold ${isOut ? 'text-red-400' : 'text-zinc-200'}`}>{ing}</span>
-                        <span className="text-[9px] font-medium text-zinc-600 uppercase tracking-wider">{categorizeIngredient(ing)}</span>
+                        <span className="text-[11px] font-medium text-zinc-400 uppercase tracking-wider">{categorizeIngredient(ing)}</span>
                       </div>
-                      <Toggle on={!isOut} onToggle={() => toggleAvailability(ing)} size="md" />
+                      <Toggle on={!isOut} onToggle={() => toggleAvailability(ing)} size="md" ariaLabel={`${ing} in stock`} />
                     </div>
                   );
                 })}
@@ -1110,13 +921,13 @@ const App: React.FC = () => {
           {activeTab === 'orders' && (
             <div className="p-4 space-y-4 max-w-4xl mx-auto w-full">
               {/* Stats bar */}
-              <div className="flex justify-between items-center px-1">
+              <div className="flex justify-between items-center gap-3 px-1">
                 <div>
-                  <h2 className="text-lg font-bold text-white tracking-tight">Orders</h2>
+                  <p className="eyebrow text-amber-400 mb-1">BAR SERVICE</p><h2 className="text-2xl font-semibold text-white tracking-tight">Orders</h2>
                   {orders.length > 0 && (
                     <div className="flex items-center gap-3 mt-1">
                       <span className="flex items-center gap-1.5 text-xs font-medium text-amber-400">
-                        <span className="w-1.5 h-1.5 bg-amber-500 rounded-full animate-gentlePulse" />
+                        <span className="w-1.5 h-1.5 bg-amber-500 rounded-full " />
                         {pendingOrderCount} pending
                       </span>
                       <span className="flex items-center gap-1.5 text-xs font-medium text-emerald-400">
@@ -1126,9 +937,10 @@ const App: React.FC = () => {
                     </div>
                   )}
                 </div>
+                <button className="ml-auto text-sm font-medium text-amber-300 border border-zinc-700 rounded-lg px-3 min-h-11" onClick={() => setActiveTab('instructions')}>Add walk-in</button>
                 <button
                   onClick={() => setBartenderViewMode(bartenderViewMode === 'grid' ? 'list' : 'grid')}
-                  className="w-9 h-9 flex items-center justify-center bg-zinc-800/60 rounded-xl text-zinc-400 active:scale-95 transition-transform"
+                  aria-label="Change order layout" className="w-11 h-11 flex items-center justify-center bg-zinc-800/60 rounded-xl text-zinc-400 active:scale-95 transition-transform"
                 >
                   {bartenderViewMode === 'grid' ? <ListIcon size={16} /> : <LayoutGrid size={16} />}
                 </button>
@@ -1136,12 +948,13 @@ const App: React.FC = () => {
 
               {orders.length === 0 ? (
                 <div className="py-24 text-center space-y-4 animate-fadeIn">
-                  <div className="w-16 h-16 bg-zinc-900 rounded-2xl flex items-center justify-center mx-auto text-zinc-700 border border-zinc-800/50">
+                  <div className="w-16 h-16 bg-zinc-900 rounded-xl flex items-center justify-center mx-auto text-zinc-700 border border-zinc-800/50">
                     <ClipboardList size={28} />
                   </div>
                   <div>
                     <p className="text-zinc-400 font-semibold text-base">No orders yet</p>
-                    <p className="text-zinc-600 text-sm mt-1">Orders from guests appear here in real-time</p>
+                    <p className="text-zinc-400 text-sm mt-1">{connectionState === 'online' ? 'Guest orders appear here. You can also add walk-ins.' : 'Add walk-in orders from the recipe menu.'}</p>
+                    <button className="min-h-12 px-5 mt-5 rounded-xl bg-amber-500 text-zinc-950 font-semibold" onClick={() => setActiveTab('instructions')}>Add a walk-in order</button>
                   </div>
                 </div>
               ) : (
@@ -1162,20 +975,15 @@ const App: React.FC = () => {
                           className={`card-elevated p-4 relative overflow-hidden transition-all duration-200 ${
                             isUrgent ? '!border-red-500/40 !border-l-4' : isWarning ? '!border-amber-500/40 !border-l-4' : ''
                           }`}
-                          style={{ borderRadius: 20 }}
+                          style={{ borderRadius: 12 }}
                         >
-                          {/* Accent corner for pending */}
-                          {o.status === 'pending' && (
-                            <div className="absolute top-0 right-0 w-16 h-16 bg-amber-500/8 rounded-bl-[60px] -mr-4 -mt-4 pointer-events-none" />
-                          )}
-
                           <div className="flex justify-between items-start mb-3">
                             <div className="space-y-1">
                               <div className="flex items-center gap-2">
                                 <h3 className="font-bold text-white text-base">{o.cocktailName}</h3>
-                                {o.status === 'pending' && <span className="w-2 h-2 bg-amber-500 rounded-full animate-gentlePulse" />}
+                                {o.status === 'pending' && <span className="w-2 h-2 bg-amber-500 rounded-full " />}
                               </div>
-                              <div className="flex items-center gap-2 text-zinc-500 text-[11px] font-medium">
+                              <div className="flex items-center gap-2 text-zinc-400 text-[11px] font-medium">
                                 <UserCircle size={12} />
                                 <span>{o.guestName}</span>
                                 {o.timestamp && (
@@ -1196,13 +1004,13 @@ const App: React.FC = () => {
                               <>
                                 <button
                                   onClick={() => { updateOrder(o.id, 'completed'); if (navigator.vibrate) navigator.vibrate(50); }}
-                                  className="flex-1 h-[52px] bg-emerald-500 text-white rounded-2xl font-bold text-sm tracking-wide hover:bg-emerald-400 active:scale-[0.97] transition-all flex items-center justify-center gap-2 shadow-lg shadow-emerald-500/15"
+                                  className="flex-1 h-[52px] bg-amber-500 text-zinc-950 rounded-xl font-bold text-sm tracking-wide hover:bg-amber-400 active:scale-[0.97] transition-all flex items-center justify-center gap-2 "
                                 >
                                   <Check size={20} strokeWidth={3} /> Done
                                 </button>
                                 <button
-                                  onClick={() => openRecipeForOrder(o)}
-                                  className="w-[52px] h-[52px] bg-zinc-800/60 text-zinc-400 rounded-2xl flex items-center justify-center hover:bg-zinc-700 hover:text-white transition-all active:scale-95"
+                                  aria-label={`Recipe for ${o.cocktailName}`} onClick={() => openRecipeForOrder(o)}
+                                  className="w-[52px] h-[52px] bg-zinc-800/60 text-zinc-400 rounded-xl flex items-center justify-center hover:bg-zinc-700 hover:text-white transition-all active:scale-95"
                                 >
                                   <BookOpen size={18} />
                                 </button>
@@ -1211,26 +1019,28 @@ const App: React.FC = () => {
                               <>
                                 {o.guestPhone && o.status === 'completed' && (
                                   <button
-                                    onClick={() => {
-                                      const text = `Hey ${o.guestName}! Your ${o.cocktailName} is ready at the bar!`;
-                                      window.open(`https://wa.me/${o.guestPhone}?text=${encodeURIComponent(text)}`, '_blank');
+                                    aria-label={`WhatsApp ${o.guestName}`} onClick={() => {
+                                      const text = `Hi ${o.guestName}, Your ${o.cocktailName} is ready at the bar!`;
+                                      if (!connectivity.online) { showToast('Reconnect to open WhatsApp.', 'info'); return; }
+                                      window.open(`https://wa.me/${o.guestPhone.replace(/\D/g, '')}?text=${encodeURIComponent(text)}`, '_blank', 'noopener,noreferrer');
                                     }}
-                                    className="w-12 h-12 bg-emerald-500 text-white rounded-2xl flex items-center justify-center active:scale-90 transition-all shadow-lg shadow-emerald-500/15"
+                                    className="w-12 h-12 bg-amber-500 text-zinc-950 rounded-xl flex items-center justify-center active:scale-90 transition-all "
                                   >
                                     <MessageCircle size={20} fill="currentColor" />
                                   </button>
                                 )}
+                                {o.guestEmail && o.status === 'completed' && <a aria-label={`Email ${o.guestName}`} className="min-h-12 px-3 flex items-center justify-center rounded-xl bg-zinc-800 text-zinc-100 text-sm" href={`mailto:${encodeURIComponent(o.guestEmail)}?subject=${encodeURIComponent('Your cocktail is ready')}&body=${encodeURIComponent(`Hi ${o.guestName}, your ${o.cocktailName} is ready at the bar.`)}`}>Email</a>}
                                 {o.status === 'completed' && (
                                   <button
                                     onClick={() => updateOrder(o.id, 'pending')}
-                                    className="flex-1 h-12 bg-zinc-800/50 text-zinc-400 rounded-2xl font-semibold text-xs hover:bg-zinc-700 hover:text-white transition-all"
+                                    className="flex-1 h-12 bg-zinc-800/50 text-zinc-400 rounded-xl font-semibold text-xs hover:bg-zinc-700 hover:text-white transition-all"
                                   >
                                     Undo
                                   </button>
                                 )}
                                 <button
-                                  onClick={() => updateOrder(o.id, 'deleted')}
-                                  className="w-12 h-12 bg-zinc-900 border border-zinc-800/50 text-zinc-600 rounded-2xl flex items-center justify-center hover:text-red-400 hover:border-red-500/20 transition-all"
+                                  aria-label={`Remove ${o.cocktailName} for ${o.guestName}`} onClick={() => updateOrder(o.id, 'deleted')}
+                                  className="w-12 h-12 bg-zinc-900 border border-zinc-800/50 text-zinc-400 rounded-xl flex items-center justify-center hover:text-red-400 hover:border-red-500/20 transition-all"
                                 >
                                   <Trash2 size={18} />
                                 </button>
@@ -1249,23 +1059,25 @@ const App: React.FC = () => {
           {activeTab === 'instructions' && (
             <div className="p-4 space-y-3 max-w-4xl mx-auto w-full">
               <h2 className="text-lg font-bold text-white tracking-tight px-1 mb-1">Recipes</h2>
-              {cocktails.map(c => (
+              <label className="block text-sm text-zinc-300">Find a recipe<input className="input-field mt-2" type="search" placeholder="Cocktail name or ingredient" value={searchQuery} onChange={event => setSearchQuery(event.target.value)} /></label>
+              {cocktails.filter(c => [c.name, ...c.ingredients].some(value => value.toLowerCase().includes(searchQuery.toLowerCase()))).map(c => (
                 <div
                   key={c.id}
-                  onClick={() => setSelectedCocktail(c)}
+                  role="button" tabIndex={0} aria-label={`View ${c.name}`} onKeyDown={event => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); setSelectedCocktail(c); } }}
+                  onClick={() => { guestOrderKey.current = null; setSelectedCocktail(c); }}
                   className="flex items-center gap-3.5 p-3 card-flat cursor-pointer hover:bg-zinc-800/40 transition-colors"
                 >
                   <div className="w-11 h-11 bg-zinc-800 rounded-xl overflow-hidden shrink-0 flex items-center justify-center">
                     {c.imageUrl ? (
-                      <img src={c.imageUrl} className="w-full h-full object-cover" loading="lazy"
+                      <img src={c.imageUrl} alt="" className="w-full h-full object-cover" loading="lazy"
                         onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />
                     ) : (
-                      <span className="text-sm font-bold text-zinc-600">{c.name.charAt(0)}</span>
+                      <span className="text-sm font-bold text-zinc-400">{c.name.charAt(0)}</span>
                     )}
                   </div>
                   <div className="flex-1 min-w-0">
                     <h3 className="font-semibold text-white text-sm truncate">{c.name}</h3>
-                    <p className="text-zinc-500 text-[10px] font-medium uppercase tracking-wider truncate">
+                    <p className="text-zinc-400 text-xs font-medium uppercase tracking-wider truncate">
                       {c.ingredients.filter(i => categorizeIngredient(i) === 'Spirit').join(' · ') || 'House'}
                     </p>
                   </div>
@@ -1274,13 +1086,18 @@ const App: React.FC = () => {
               ))}
             </div>
           )}
-        </div>
+        </main>
 
         {/* Recipe Bottom Sheet */}
-        <BottomSheet isOpen={!!selectedCocktail} onClose={() => setSelectedCocktail(null)} title={selectedCocktail?.name || ''}>
+        <BottomSheet isOpen={!!selectedCocktail} onClose={() => setSelectedCocktail(null)} title={selectedCocktail?.name || ''}
+          footer={<div className="space-y-3">
+            <label className="block text-sm">Walk-in guest name<input value={walkInName} maxLength={60} onChange={event => setWalkInName(event.target.value)} className="input-field mt-2 h-12" /></label>
+            <Button onClick={addWalkInOrder} disabled={isSubmittingOrder || !!selectedCocktail?.ingredients.some(item => availability[item])}>{isSubmittingOrder ? 'Saving...' : 'Add walk-in order'}</Button>
+          </div>}>
           <div className="space-y-5 max-w-3xl mx-auto">
+            {selectedCocktail?.imageUrl && <img src={selectedCocktail.imageUrl} alt={selectedCocktail.name} className="w-full max-h-56 object-cover object-[center_60%] rounded-lg" />}
             <div className="space-y-2">
-              <h4 className="text-[11px] font-semibold text-zinc-500 uppercase tracking-wider">Ingredients</h4>
+              <h4 className="text-[11px] font-semibold text-zinc-400 uppercase tracking-wider">Ingredients</h4>
               <div className="flex flex-wrap gap-1.5">
                 {selectedCocktail?.ingredients.filter(i => i.length > 1).map(ing => (
                   <div key={ing} className={`px-3 py-2 rounded-xl text-xs font-semibold flex items-center gap-1.5 ${
@@ -1293,47 +1110,26 @@ const App: React.FC = () => {
               </div>
             </div>
             <div className="space-y-2">
-              <h4 className="text-[11px] font-semibold text-zinc-500 uppercase tracking-wider">Instructions</h4>
-              <div className="p-4 bg-zinc-800/30 rounded-2xl border border-zinc-800/40">
+              <h4 className="text-[11px] font-semibold text-zinc-400 uppercase tracking-wider">Instructions</h4>
+              <div className="p-4 bg-zinc-800/30 rounded-xl border border-zinc-800/40">
                 <p className="text-sm text-zinc-300 leading-relaxed whitespace-pre-wrap">{selectedCocktail?.instructions}</p>
               </div>
             </div>
           </div>
         </BottomSheet>
 
-        {/* Navigation */}
-        <nav className="nav-bar safe-bottom">
+        <nav className="nav-bar safe-bottom" aria-label="Bar workspace">
           <div className="flex justify-around items-center h-[72px] px-4 max-w-lg mx-auto">
             {([
-              { id: 'ingredients' as const, icon: ClipboardList, label: 'Stock' },
-              { id: 'orders' as const, icon: Wine, label: 'Orders', featured: true },
+              { id: 'orders' as const, icon: ClipboardList, label: 'Orders' },
+              { id: 'ingredients' as const, icon: Wine, label: 'Stock' },
               { id: 'instructions' as const, icon: BookOpen, label: 'Recipes' },
-            ]).map(tab => (
-              <button
-                key={tab.id}
-                onClick={() => setActiveTab(tab.id)}
-                className="nav-item"
-                style={{ color: activeTab === tab.id ? '#f59e0b' : '#52525b' }}
-              >
-                {tab.featured ? (
-                  <div className={`p-3 rounded-2xl -mt-10 shadow-xl transition-all duration-200 ${
-                    activeTab === tab.id
-                      ? 'bg-gradient-to-br from-amber-400 to-amber-600 text-zinc-950 scale-105'
-                      : 'bg-zinc-800 text-zinc-400'
-                  }`}>
-                    <tab.icon size={22} strokeWidth={2.5} />
-                    {pendingOrderCount > 0 && (
-                      <div className="absolute -top-1 -right-1 w-5 h-5 bg-red-500 text-white text-[9px] font-bold rounded-full border-2 border-zinc-900 flex items-center justify-center">
-                        {pendingOrderCount}
-                      </div>
-                    )}
-                  </div>
-                ) : (
-                  <tab.icon size={20} strokeWidth={activeTab === tab.id ? 2.5 : 2} />
-                )}
-                <span className="nav-item-label">{tab.label}</span>
-              </button>
-            ))}
+            ]).map(tab => <button key={tab.id} aria-current={activeTab === tab.id ? 'page' : undefined}
+              onClick={() => { setActiveTab(tab.id); setSearchQuery(''); }} className="nav-item">
+              <span className="relative"><tab.icon size={21} strokeWidth={1.75} />
+                {tab.id === 'orders' && pendingOrderCount > 0 && <span className="nav-count">{pendingOrderCount}</span>}
+              </span><span className="nav-item-label">{tab.label}</span>
+            </button>)}
           </div>
         </nav>
 

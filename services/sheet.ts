@@ -172,7 +172,7 @@ const extractStrictTasteProfiles = (rawText: string): string[] => {
 export const fetchCocktailsFromSheet = async (): Promise<Cocktail[]> => {
   try {
     // Add timestamp to prevent caching
-    const response = await fetch(`${SHEET_CSV_URL}&t=${Date.now()}`);
+    const response = await fetch(`${SHEET_CSV_URL}&t=${Date.now()}`, { signal: AbortSignal.timeout(15000) });
     if (!response.ok) throw new Error('Failed to fetch Google Sheet data');
     const csvText = await response.text();
     
@@ -330,7 +330,7 @@ export const fetchCocktailsFromSheet = async (): Promise<Cocktail[]> => {
       const tasteProfiles = extractStrictTasteProfiles(rawTasteText);
 
       return {
-        id: `cocktail-${idx}`,
+        id: `cocktail-${rawName.toLowerCase().normalize('NFKD').replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')}`,
         imageUrl,
         name: rawName,
         description: clean[colMap.desc] || 'A premium selection.',
