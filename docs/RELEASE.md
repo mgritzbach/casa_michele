@@ -6,16 +6,15 @@ Guest entry uses a name plus email or WhatsApp number, as clarified by the owner
 These are contact details, not verified login. Bartenders work offline; guests
 need an internet connection. The shared bartender password remains unchanged.
 
-The goal remains open until every critical requirement in `ACCEPTANCE.md` has
-passed. The scores below are internal assessments, not external certification.
-Do not turn a pending check into a pass merely because the build compiles.
+Every critical requirement in `ACCEPTANCE.md` has passed for the clarified scope.
+The scores below are internal assessments, not external certification.
 
 | Area | Evidence | Current gate |
 | --- | --- | --- |
 | Engineering | 19 persistence, retry, link and offline-asset tests; TypeScript; production build; SQL authorization and idempotency assertions; Android offline runtime test | 9/10 internal assessment; critical engineering checks passed |
-| Product | Offline walk-in, status, stock and reload; reconnect; cross-client menu updates; email and WhatsApp-number join; expired-session recovery; guest offline block; ready notification | Browser and native link checks passed; production domain association pending |
+| Product | Offline walk-in, status, stock and reload; reconnect; cross-client menu updates; email and WhatsApp-number join; expired-session recovery; guest offline block; ready notification; decoded production QR and verified Android links | 9/10 internal assessment; critical product checks passed |
 | UI | Shared gold/charcoal/grey system; mobile and desktop review; keyboard cards, focus-managed dialogs, visible labels; zero automated WCAG violations on five key screens | 9/10 internal assessment; evidence recorded in test-results |
-| Release | Android APK compiles; same web bundle copied into APK; additive v4-compatible schema; CI and rollback instructions | Production deployment and Android domain verification pending; final score withheld |
+| Release | Published web and signed APK; matching application bundles; additive v4-compatible schema; CI; live production checks; rollback instructions | 9/10 internal assessment; critical release checks passed |
 
 ## Verification performed
 
@@ -26,6 +25,9 @@ and native back navigation. The side-by-side APK SHA-256 is
 `0f3ca8044c81812d5e1ff54f5f1e0aee8219d330a3caebfd1c6009a8670e2cdd`.
 Its 54 packaged web files were compared byte-for-byte with the local web build.
 Later documentation-only commits do not change these tested application sources.
+Both web/build and native-runtime jobs also passed for verification commit
+`2ecd62c9caaf0af528c28f83cc6660774d5608c6` in
+https://github.com/mgritzbach/casa_michele/actions/runs/41030642527.
 
 The browser checks used a synthetic event `QA30GOLD` in two separate browser
 profiles. No message was sent by email or WhatsApp.
@@ -106,13 +108,46 @@ npm run verify
 npx wrangler deploy
 ```
 
-Cloudflare authentication is required on the release machine. The current browser
-session is at the Cloudflare sign-in screen. Production deployment is pending.
-After deployment verify the root page, the new bundle, service worker, and
-`/.well-known/assetlinks.json`, then use an Android device to test HTTPS link
-verification and the custom-scheme fallback. Check a fresh guest session against
-the same event used by the app. Do not mark release readiness as 9/10 until these
-checks pass.
+Production was published on 30 October 2026 at
+https://casa-michele.mic-gritzbach.workers.dev. Cloudflare version `88c9497e`
+serves 100% of traffic, from commit
+`6e62e1b861980eb19e55960781370fb3b4b33304`. This has the same application
+source as the distributed APK; later commits change only documentation and CI.
+The prior production version `9134b54c` is the rollback target.
+
+All 55 public build files were retrieved successfully. Application JavaScript,
+CSS, images and domain association match the local bundle. HTML, manifest and
+service worker match the verified CI artifact, including build-environment
+whitespace and content hashes. The association endpoint returns JSON, and the
+Google Digital Asset Links API confirms the distributed package and certificate
+are linked to production.
+
+The production event `QA30LIVE` passed fresh email guest entry, cross-client
+ordering, offline bartender completion, offline reload, reconnect, guest ready
+notification, guest offline blocking and WhatsApp-number entry. No email or
+WhatsApp message was sent. ZXing decoded the rendered production QR screenshot
+to `https://casa-michele.mic-gritzbach.workers.dev/?code=QA30LIVE`.
+
+The exact signed APK is published as a prerelease at
+https://github.com/mgritzbach/casa_michele/releases/tag/v5.0.0-preview.
+The production-link workflow downloads that file, checks its SHA-256 and tests
+Android's own domain verifier without forcing approval.
+
+The exact distributed APK passed on an API 35 Google APIs emulator in
+https://github.com/mgritzbach/casa_michele/actions/runs/41030635767 (attempt 2).
+`pm get-app-links` reported the production host as `verified` for the expected
+certificate. Unqualified HTTPS and custom-scheme VIEW intents both opened
+`com.casamichele.app.preview/com.casamichele.app.MainActivity`. The captured
+screen shows the join form with event `QA30LIVE`. This tests actual Android
+verification, not merely intent-filter registration or forced approval.
+The first attempt could not download an unpublished draft release; publishing
+the prerelease made it available without widening CI permissions.
+
+The release retains these explicit limitations: sideload/debug signing rather
+than an in-place v4 upgrade; self-reported contact details rather than verified
+identities; and newly added remote photos need inclusion in the next bundled
+release for guaranteed offline availability. These do not remove the accepted
+offline bartender, guest connectivity or shared-link requirements.
 
 ## APK and signing
 
@@ -130,7 +165,7 @@ contains public certificate fingerprints only.
 
 ## Rollback
 
-Roll back the Cloudflare Worker to the prior known-good deployment. The v5 database
+Roll back the Cloudflare Worker to version `9134b54c`. The v5 database
 migration is additive and v4-compatible, so retain it. Do not drop revision columns
 or mutation receipts as a rollback step. A v5 device may still have unsynced edits.
 A side-by-side APK can be removed without affecting v4, but first sync any new work.
