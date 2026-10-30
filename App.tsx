@@ -147,35 +147,55 @@ const App: React.FC = () => {
     return () => clearInterval(interval);
   }, []);
 
-  // Restore a local bartender session even if its online token has expired.
+  // The bundled menu remains available even when a saved menu is damaged.
   useEffect(() => {
     try {
-      const saved = JSON.parse(localStorage.getItem(SESSION_STORAGE_KEY) || 'null') as EventSession | null;
-      if (saved && (saved.isBartender || new Date(saved.expiresAt).getTime() > Date.now())) {
-        setSession(saved);
-        setView(saved.isBartender ? 'bartender' : 'guest');
-      }
       const menu = JSON.parse(localStorage.getItem('casa-menu-v5') || 'null');
       if (Array.isArray(menu) && menu.length) setCocktails(menu);
     } catch { /* The bundled menu remains available if a cache is damaged. */ }
   }, []);
 
   useEffect(() => {
+    let disposed = false;
+    let receivedLink = false;
+    const readSavedSession = (): EventSession | null => {
+      try {
+        const saved = JSON.parse(localStorage.getItem(SESSION_STORAGE_KEY) || 'null') as EventSession | null;
+        return saved && (saved.isBartender || new Date(saved.expiresAt).getTime() > Date.now()) ? saved : null;
+      } catch { return null; }
+    };
     const acceptLink = (url: string) => {
       const code = eventCodeFromUrl(url);
-      if (code) {
+      if (code && !disposed) {
+        receivedLink = true;
         setPendingSessionCode(code);
-        let saved: EventSession | null = null;
-        try { saved = JSON.parse(localStorage.getItem(SESSION_STORAGE_KEY) || 'null'); } catch { /* Ignore an invalid cache. */ }
-        if (saved?.eventCode !== code) { setSession(null); setView('guest'); }
+        const saved = readSavedSession();
+        const matching = saved?.eventCode === code ? saved : null;
+        setSession(matching);
+        setView(matching?.isBartender ? 'bartender' : 'guest');
+        setSelectedCocktail(null);
+        setShowQrCode(false);
       }
     };
-    acceptLink(window.location.href);
-    if (!Capacitor.isNativePlatform()) return;
-    let disposed = false;
-    const listener = CapacitorApp.addListener('appUrlOpen', event => acceptLink(event.url));
-    void CapacitorApp.getLaunchUrl().then(result => { if (!disposed && result?.url) acceptLink(result.url); });
-    return () => { disposed = true; void listener.then(handle => handle.remove()); };
+    const native = Capacitor.isNativePlatform();
+    const listener = native ? CapacitorApp.addListener('appUrlOpen', event => acceptLink(event.url)) : null;
+    void (async () => {
+      // Resolve an external launch before restoring the last workspace.
+      // A newer appUrlOpen event always takes precedence over startup recovery.
+      let launchUrl = window.location.href;
+      if (native) {
+        try { launchUrl = (await CapacitorApp.getLaunchUrl())?.url || launchUrl; }
+        catch (error) { console.error('Could not read the app launch link', error); }
+      }
+      if (disposed || receivedLink) return;
+      acceptLink(launchUrl);
+      if (!receivedLink) {
+        const saved = readSavedSession();
+        setSession(saved);
+        setView(saved ? (saved.isBartender ? 'bartender' : 'guest') : 'landing');
+      }
+    })();
+    return () => { disposed = true; if (listener) void listener.then(handle => handle.remove()); };
   }, []);
 
   useEffect(() => {
@@ -283,9 +303,7 @@ const App: React.FC = () => {
 
   useEffect(() => {
     if (!Capacitor.isNativePlatform()) return;
-    let removeListener: (() => Promise<void>) | undefined;
-
-    void CapacitorApp.addListener('backButton', () => {
+    const listener = CapacitorApp.addListener('backButton', () => {
       if (isConfirmingOrder) {
         setIsConfirmingOrder(false);
       } else if (selectedCocktail) {
@@ -299,12 +317,10 @@ const App: React.FC = () => {
       } else {
         void CapacitorApp.exitApp();
       }
-    }).then(handle => {
-      removeListener = () => handle.remove();
     });
 
     return () => {
-      if (removeListener) void removeListener();
+      void listener.then(handle => handle.remove());
     };
   }, [isConfirmingOrder, selectedCocktail, showQrCode, session, view]);
 

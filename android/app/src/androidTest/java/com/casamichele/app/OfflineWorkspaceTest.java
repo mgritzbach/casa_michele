@@ -88,6 +88,7 @@ public class OfflineWorkspaceTest {
             assertEquals("true", js("window.Capacitor.isNativePlatform()"));
             js("window.Capacitor.Plugins.App.getLaunchUrl().then(r => window.casaTestLaunch = r?.url).catch(e => window.casaTestLaunch = String(e))");
             waitFor("window.casaTestLaunch === 'casamichele://join?code=NATIVEQA'");
+            assertEquals("\"join\"", js("new URL(window.casaTestLaunch).hostname"));
             waitFor("document.body.innerText.includes('Internet needed for guests')");
         } finally {
             if (scenario != null) scenario.close();

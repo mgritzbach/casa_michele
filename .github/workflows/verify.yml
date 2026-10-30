@@ -61,11 +61,12 @@ jobs:
           arch: x86_64
           profile: pixel_5
           disable-animations: true
-          script: bash android/gradlew -p android :app:connectedDebugAndroidTest --console=plain
+          script: bash android/gradlew -p android :app:connectedDebugAndroidTest --console=plain || { adb logcat -d > android-runtime-logcat.txt; exit 1; }
       - uses: actions/upload-artifact@v4
         if: always()
         with:
           name: android-runtime-results
           path: |
+            android-runtime-logcat.txt
             android/app/build/reports/androidTests/
             android/app/build/outputs/androidTest-results/
