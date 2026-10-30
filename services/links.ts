@@ -11,9 +11,16 @@ export function eventJoinUrl(code: string): string {
 }
 export function eventCodeFromUrl(value: string): string | null {
   try {
+    // Older Android WebViews treat non-HTTP URLs as opaque and return an empty
+    // hostname. Parse only our exact custom route before using the HTTP parser.
+    const custom = /^casamichele:\/\/join\/?(?:\?([^#]*))?(?:#.*)?$/i.exec(value);
+    if (custom) {
+      const code = new URLSearchParams(custom[1] || '').get('code');
+      return code ? normalizeEventCode(code) : null;
+    }
     const url = new URL(value);
-    if (!(url.origin === PUBLIC_APP_URL || url.hostname === 'localhost' || url.hostname === '127.0.0.1'
-      || (url.protocol === 'casamichele:' && url.hostname === 'join'))) return null;
+    if (!['http:', 'https:'].includes(url.protocol)) return null;
+    if (!(url.origin === PUBLIC_APP_URL || url.hostname === 'localhost' || url.hostname === '127.0.0.1')) return null;
     const code = url.searchParams.get('code');
     return code ? normalizeEventCode(code) : null;
   } catch { return null; }

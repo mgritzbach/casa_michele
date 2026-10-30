@@ -12,7 +12,7 @@ Do not turn a pending check into a pass merely because the build compiles.
 
 | Area | Evidence | Current gate |
 | --- | --- | --- |
-| Engineering | 17 persistence, retry, link and offline-asset tests; TypeScript; production build; SQL authorization and idempotency assertions | Web checks passed; native runtime check pending |
+| Engineering | 19 persistence, retry, link and offline-asset tests; TypeScript; production build; SQL authorization and idempotency assertions | Web checks passed; native runtime check pending |
 | Product | Offline walk-in, status, stock and reload; reconnect; cross-client menu updates; email and WhatsApp-number join; expired-session recovery; guest offline block; ready notification | Browser checks passed; installed Android link check pending |
 | UI | Shared gold/charcoal/grey system; 390px mobile review; keyboard cards, focus-managed dialogs, visible labels; automated WCAG checks | Final audit evidence recorded in test-results |
 | Release | Android APK compiles; same web bundle copied into APK; additive v4-compatible schema; CI and rollback instructions | Live web deployment and native runtime acceptance pending |
@@ -45,7 +45,11 @@ event isolation, contact retention and lack of direct anonymous table access.
 
 The Android instrumentation test uses a disposable API 35 emulator in CI. It
 checks first-run offline menu/photos, walk-in completion, process/activity restart
-persistence, both link intent filters and the offline guest screen. The local
+persistence, both link intent filters, cold custom links, warm HTTPS links,
+the native back button and the offline guest screen. An initial emulator run
+exposed an Android WebView that returns an empty hostname for custom-scheme
+URLs. The custom route now has an explicit parser and a regression test.
+The local
 Windows emulator could not boot without a working hypervisor; no system driver,
 firewall permission or Windows virtualization setting was changed to bypass that.
 

@@ -88,8 +88,14 @@ public class OfflineWorkspaceTest {
             assertEquals("true", js("window.Capacitor.isNativePlatform()"));
             js("window.Capacitor.Plugins.App.getLaunchUrl().then(r => window.casaTestLaunch = r?.url).catch(e => window.casaTestLaunch = String(e))");
             waitFor("window.casaTestLaunch === 'casamichele://join?code=NATIVEQA'");
-            assertEquals("\"join\"", js("new URL(window.casaTestLaunch).hostname"));
             waitFor("document.body.innerText.includes('Internet needed for guests')");
+            waitFor("document.body.innerText.includes('NATIVEQA')");
+            context.startActivity(new Intent(Intent.ACTION_VIEW,
+                Uri.parse("https://casa-michele.mic-gritzbach.workers.dev/?code=NATIVEQB"))
+                .setPackage(context.getPackageName()).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
+            waitFor("document.body.innerText.includes('NATIVEQB') && !document.body.innerText.includes('NATIVEQA')");
+            scenario.onActivity(activity -> activity.getOnBackPressedDispatcher().onBackPressed());
+            waitFor("document.body.innerText.includes('A seat at')");
         } finally {
             if (scenario != null) scenario.close();
             shell("svc wifi enable");

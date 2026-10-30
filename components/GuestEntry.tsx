@@ -17,6 +17,7 @@ export function GuestEntry({ code, busy, online, checked, onBack, onJoin, onRetr
       {code && !Capacitor.isNativePlatform() && <a className="text-amber-300 underline min-h-11 mb-3" href={`casamichele://join?code=${encodeURIComponent(code)}`}>Open in the installed Android app</a>}
       {!checked ? <p role="status" className="text-zinc-300 py-6">Checking the connection...</p> : !online ? <div role="status" className="space-y-4 bg-zinc-900 rounded-2xl p-6">
         <WifiOff className="text-amber-400" /><h2 className="text-xl font-semibold">Internet needed for guests</h2>
+        {code && <p className="text-sm text-zinc-300">Event <strong>{code}</strong></p>}
         <p className="text-zinc-400">Connect to the internet to join and send orders to the bar.</p>
         <Button onClick={onRetry}>Try again</Button>
       </div> : <form className="space-y-5" onSubmit={async event => {
