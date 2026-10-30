@@ -12,12 +12,20 @@ Do not turn a pending check into a pass merely because the build compiles.
 
 | Area | Evidence | Current gate |
 | --- | --- | --- |
-| Engineering | 19 persistence, retry, link and offline-asset tests; TypeScript; production build; SQL authorization and idempotency assertions | Web checks passed; native runtime check pending |
+| Engineering | 19 persistence, retry, link and offline-asset tests; TypeScript; production build; SQL authorization and idempotency assertions; Android offline runtime test | 9/10 internal assessment; critical engineering checks passed |
 | Product | Offline walk-in, status, stock and reload; reconnect; cross-client menu updates; email and WhatsApp-number join; expired-session recovery; guest offline block; ready notification | Browser checks passed; installed Android link check pending |
-| UI | Shared gold/charcoal/grey system; 390px mobile review; keyboard cards, focus-managed dialogs, visible labels; automated WCAG checks | Final audit evidence recorded in test-results |
-| Release | Android APK compiles; same web bundle copied into APK; additive v4-compatible schema; CI and rollback instructions | Live web deployment and native runtime acceptance pending |
+| UI | Shared gold/charcoal/grey system; mobile and desktop review; keyboard cards, focus-managed dialogs, visible labels; zero automated WCAG violations on five key screens | 9/10 internal assessment; evidence recorded in test-results |
+| Release | Android APK compiles; same web bundle copied into APK; additive v4-compatible schema; CI and rollback instructions | Production deployment and Android domain verification pending; final score withheld |
 
 ## Verification performed
+
+The source at `fdc4d30e328b56bebfc9b88f472ffc100b53c299` passed both CI jobs:
+https://github.com/mgritzbach/casa_michele/actions/runs/40990127637.
+This includes the API 35 emulator test with cold custom links, warm HTTPS links
+and native back navigation. The side-by-side APK SHA-256 is
+`0f3ca8044c81812d5e1ff54f5f1e0aee8219d330a3caebfd1c6009a8670e2cdd`.
+Its 54 packaged web files were compared byte-for-byte with the local web build.
+Later documentation-only commits do not change these tested application sources.
 
 The browser checks used a synthetic event `QA30GOLD` in two separate browser
 profiles. No message was sent by email or WhatsApp.
@@ -38,6 +46,9 @@ profiles. No message was sent by email or WhatsApp.
 8. Disable guest networking. The guest sees the internet-required screen and
    cannot submit. Reconnect and join a new session using a WhatsApp number.
 9. Install a web service-worker update. Saved session and orders remain intact.
+10. Create a new bar entirely offline, add a walk-in, reconnect and authenticate.
+    Event `BARAE7FB51E` synchronized with an empty outbox and exactly one server
+    order at revision 1, preserving the order created before the event existed online.
 
 The SQL test `supabase/tests/offline_sync.sql` runs inside BEGIN/ROLLBACK and
 asserts duplicate retry behaviour, row revisions, v4 conflicts, guest restrictions,
