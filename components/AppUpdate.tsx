@@ -47,11 +47,16 @@ export function AppUpdate() {
     if (checking.current) return;
     checking.current = true; setBusy(true); setError(''); setMessage(''); setRelease(null);
     try {
+      if (!navigator.onLine) throw new Error('Connect to the internet to check for updates. Your bar still works offline.');
       const info = native ? await App.getInfo() : null;
       if (info) setInstalledVersion(info.version);
       if (!native) {
         const worker = registration.current || await navigator.serviceWorker?.getRegistration();
-        if (worker) { await worker.update(); if (worker.waiting) setAvailable(true); }
+        if (worker) {
+          try { await worker.update(); }
+          catch { throw new Error('Could not check the website for updates. Reconnect and try again.'); }
+          if (worker.waiting) setAvailable(true);
+        }
       }
       const latest = await checkGithubRelease(info?.id);
       setRelease(latest);

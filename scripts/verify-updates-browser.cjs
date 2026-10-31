@@ -87,6 +87,9 @@ const release = version => ({ tag_name:`v${version}-preview`, published_at:'2026
     await web.route('https://api.github.com/**',route=>route.fulfill({status:403,json:{message:'rate limited'}}));
     await app.getByRole('button',{name:'Check again',exact:true}).click();
     await app.getByRole('alert').filter({hasText:'limiting update checks'}).waitFor();
+    await web.setOffline(true);
+    await app.getByRole('button',{name:'Check again',exact:true}).click();
+    await app.getByRole('alert').filter({hasText:'Connect to the internet'}).waitFor();
     results.push('real web service-worker install, pending stock preservation, release/deployment distinction, rate limit, 320px layout');
     await fs.writeFile(output+'/result.json',JSON.stringify({passed:true,checks:results,accessibilityViolations:audit.violations.length},null,2));
     console.log('PASS',results);
