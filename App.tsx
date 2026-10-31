@@ -96,6 +96,7 @@ const categorizeIngredient = (name: string): string => {
 const App: React.FC = () => {
   // Core state
   const [view, setView] = useState<'landing' | 'bartender' | 'guest'>('landing');
+  const [startupReady, setStartupReady] = useState(false);
   const [session, setSession] = useState<EventSession | null>(null);
   const [savedBars, setSavedBars] = useState<EventSession[]>(() => {
     try { const bars = JSON.parse(localStorage.getItem('casa-saved-bars-v5') || '[]'); return Array.isArray(bars) ? bars.filter(bar => bar?.isBartender && typeof bar.eventCode === 'string') : []; } catch { return []; }
@@ -185,19 +186,24 @@ const App: React.FC = () => {
     const native = Capacitor.isNativePlatform();
     const listener = native ? CapacitorApp.addListener('appUrlOpen', event => acceptLink(event.url)) : null;
     void (async () => {
-      // Resolve an external launch before restoring the last workspace.
-      // A newer appUrlOpen event always takes precedence over startup recovery.
-      let launchUrl = window.location.href;
-      if (native) {
-        try { launchUrl = (await CapacitorApp.getLaunchUrl())?.url || launchUrl; }
-        catch (error) { console.error('Could not read the app launch link', error); }
-      }
-      if (disposed || receivedLink) return;
-      acceptLink(launchUrl);
-      if (!receivedLink) {
-        const saved = readSavedSession();
-        setSession(saved);
-        setView(saved ? (saved.isBartender ? 'bartender' : 'guest') : 'landing');
+      try {
+        // Finish launch/session recovery before offering navigation. Otherwise
+        // a slow native launch lookup can overwrite the user's first tap.
+        // A newer appUrlOpen event takes precedence over startup recovery.
+        let launchUrl = window.location.href;
+        if (native) {
+          try { launchUrl = (await CapacitorApp.getLaunchUrl())?.url || launchUrl; }
+          catch (error) { console.error('Could not read the app launch link', error); }
+        }
+        if (disposed || receivedLink) return;
+        acceptLink(launchUrl);
+        if (!receivedLink) {
+          const saved = readSavedSession();
+          setSession(saved);
+          setView(saved ? (saved.isBartender ? 'bartender' : 'guest') : 'landing');
+        }
+      } finally {
+        if (!disposed) setStartupReady(true);
       }
     })();
     return () => { disposed = true; if (listener) void listener.then(handle => handle.remove()); };
@@ -457,6 +463,10 @@ const App: React.FC = () => {
   const outOfStockCount = useMemo(() => Object.values(availability).filter(Boolean).length, [availability]);
   const pendingOrderCount = useMemo(() => orders.filter(o => o.status === 'pending').length, [orders]);
   const completedOrderCount = useMemo(() => orders.filter(o => o.status === 'completed').length, [orders]);
+
+  if (!startupReady) {
+    return <main className="min-h-screen flex items-center justify-center p-6 text-zinc-300" role="status">Opening Casa Michele...</main>;
+  }
 
   // ════════════════════════════════════════════════
   // ██  LANDING PAGE  ██
