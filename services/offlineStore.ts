@@ -6,21 +6,23 @@ export interface Snapshot {
   availability: IngredientAvailability;
   revisions: Record<string, number>;
   savedAt: number;
+  allowOutOfStockOrders?: boolean;
 }
 export type Mutation = {
   id: string;
-  kind: 'stock' | 'status' | 'order';
+  kind: 'stock' | 'status' | 'order' | 'settings';
   key: string;
   expectedRevision: number;
   ingredient?: string;
   isAvailable?: boolean;
+  allowOutOfStockOrders?: boolean;
   orderId?: string;
   status?: OrderStatus;
   order?: Order;
   error?: string;
 };
 export interface EventCache { snapshot: Snapshot; outbox: Mutation[] }
-export const emptySnapshot = (): Snapshot => ({ orders: [], availability: {}, revisions: {}, savedAt: 0 });
+export const emptySnapshot = (): Snapshot => ({ orders: [], availability: {}, revisions: {}, savedAt: 0, allowOutOfStockOrders: false });
 const db = () => openDB('casa-michele-v5', 1, {
   upgrade(database) { database.createObjectStore('events'); },
 });
@@ -51,6 +53,7 @@ export function projectEvent(cache: EventCache): Snapshot {
 export function applyMutation(snapshot: Snapshot, mutation: Mutation, revision = mutation.expectedRevision + 1, projectLocal = false) {
   if (!projectLocal && (snapshot.revisions[mutation.key] || 0) > revision) return;
   if (mutation.kind === 'stock') snapshot.availability[mutation.ingredient!] = !mutation.isAvailable;
+  if (mutation.kind === 'settings') snapshot.allowOutOfStockOrders = mutation.allowOutOfStockOrders === true;
   if (mutation.kind === 'status') snapshot.orders = snapshot.orders.map(order => order.id === mutation.orderId
     ? { ...order, status: mutation.status!, revision } : order);
   if (mutation.kind === 'order' && !snapshot.orders.some(order => order.id === mutation.order!.id)) {
@@ -66,6 +69,7 @@ export function mergeSnapshot(current: Snapshot, incoming: Snapshot): Snapshot {
     if (revision <= (incoming.revisions[key] || 0)) continue;
     merged.revisions[key] = revision;
     if (key.startsWith('stock:')) merged.availability[key.slice(6)] = current.availability[key.slice(6)];
+    else if (key === 'settings:guestOrdering') merged.allowOutOfStockOrders = current.allowOutOfStockOrders === true;
     else {
       const order = current.orders.find(item => `order:${item.id}` === key);
       if (order) merged.orders = [...merged.orders.filter(item => item.id !== order.id), order];

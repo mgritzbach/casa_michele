@@ -5,6 +5,25 @@ import { eventCodeFromUrl, eventJoinUrl } from '../services/links';
 
 const eventCode = () => crypto.randomUUID();
 describe('durable bartender workspace', () => {
+  it('retains a guest ordering setting across restart and replays rapid toggles in order', async () => {
+    const code = eventCode();
+    await enqueue(code, { kind: 'settings', key: 'settings:guestOrdering', allowOutOfStockOrders: true });
+    expect(projectEvent(await readEvent(code)).allowOutOfStockOrders).toBe(true);
+    await enqueue(code, { kind: 'settings', key: 'settings:guestOrdering', allowOutOfStockOrders: false });
+    const cache = await readEvent(code);
+    expect(cache.outbox.map(item => item.expectedRevision)).toEqual([0, 1]);
+    expect(projectEvent(cache).allowOutOfStockOrders).toBe(false);
+  });
+  it('keeps a saved policy over remote snapshots and accepts the server after conflict resolution', async () => {
+    const code = eventCode();
+    await enqueue(code, { kind: 'settings', key: 'settings:guestOrdering', allowOutOfStockOrders: true });
+    await editEvent(code, cache => { cache.snapshot.allowOutOfStockOrders = false; cache.snapshot.revisions['settings:guestOrdering'] = 3; });
+    expect(projectEvent(await readEvent(code)).allowOutOfStockOrders).toBe(true);
+    const resolved = await resolveConflict(code, 'settings:guestOrdering', false);
+    expect(projectEvent(resolved).allowOutOfStockOrders).toBe(false);
+    const current = emptySnapshot(); current.allowOutOfStockOrders = true; current.revisions['settings:guestOrdering'] = 4;
+    expect(mergeSnapshot(current, resolved.snapshot).allowOutOfStockOrders).toBe(true);
+  });
   it('keeps a conflicting local edit visible even when the server has a newer revision', async () => {
     const code = eventCode();
     await enqueue(code, { kind: 'stock', key: 'stock:Gin', ingredient: 'Gin', isAvailable: false });

@@ -6,6 +6,22 @@ including when the internet is unavailable.
 
 Production URL: https://casa-michele.mic-gritzbach.workers.dev
 
+## Stock controls in v5.1
+
+In **Recipes**, drinks missing stock have a red border and list the missing
+ingredients. **Makeable only** hides them and combines with recipe search.
+Availability follows the ingredient selections in **Stock**, including offline.
+
+In **Stock > Guest ordering**, turn on **Allow out-of-stock drinks for guests to
+order** to accept those orders for the current event. It starts off, remains
+independent of actual stock, and synchronizes to other devices. Offline changes
+take effect for guests after sync. Missing-stock warnings remain visible, and
+turning the setting off restores the server-side restriction for new orders.
+
+The v5.1 preview APK uses the same package and signing key as the v5.0 preview,
+so it updates that installation without clearing its saved data. It still
+coexists with the older v4 app.
+
 ## What v5 changes
 
 - Bundles the menu, recipes and 41 optimised photos for Android's first offline launch.

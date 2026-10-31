@@ -72,6 +72,22 @@ public class OfflineWorkspaceTest {
             scenario.close();
             scenario = ActivityScenario.launch(MainActivity.class);
             waitFor("document.body.innerText.includes('2 saved changes') && document.body.innerText.includes('Negroni') && document.body.innerText.includes('DONE')");
+            click("Stock");
+            js("document.querySelector('[aria-label=\"Gin in stock\"]').click()");
+            waitFor("document.body.innerText.includes('3 saved changes')");
+            js("document.querySelector('[aria-label=\"Allow out-of-stock drinks for guests to order\"]').click()");
+            waitFor("document.body.innerText.includes('4 saved changes')");
+            click("Recipes");
+            waitFor("document.querySelector('[aria-label=\"View Negroni\"]')?.textContent.includes('Missing: Gin')");
+            assertEquals("true", js("document.querySelector('[aria-label=\"View Negroni\"]').classList.contains('stock-unavailable')"));
+            click("Makeable only");
+            waitFor("!document.querySelector('[aria-label=\"View Negroni\"]') && document.querySelectorAll('[aria-label^=\"View \"]').length > 0");
+            scenario.close();
+            scenario = ActivityScenario.launch(MainActivity.class);
+            waitFor("document.body.innerText.includes('4 saved changes')");
+            click("Stock");
+            waitFor("document.querySelector('[aria-label=\"Allow out-of-stock drinks for guests to order\"]')?.getAttribute('aria-pressed') === 'true'");
+            assertEquals("true", js("document.querySelector('[aria-label=\"Gin in stock\"]').getAttribute('aria-checked') === 'false'"));
             assertEquals("true", js("document.documentElement.scrollWidth <= innerWidth"));
             scenario.close();
 

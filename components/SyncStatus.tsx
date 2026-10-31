@@ -40,7 +40,7 @@ export function SyncStatus({ session, connection, pending, savedAt, onSession, o
     </form>}
     {conflict && <div role="alert" className="border border-amber-500/40 bg-amber-500/10 rounded-xl p-4 space-y-3">
       <p className="font-semibold">A change needs your review</p>
-      <p className="text-sm text-zinc-300">{conflict.kind === 'stock' ? conflict.ingredient : 'An order'} changed on another device. {conflict.error}</p>
+      <p className="text-sm text-zinc-300">{conflict.kind === 'stock' ? conflict.ingredient : conflict.kind === 'settings' ? 'Guest ordering' : 'An order'} changed on another device. {conflict.error}</p>
       <div className="flex gap-2">
         <Button disabled={busy || connection !== 'online'} onClick={async () => { setBusy(true); try { await onResolve(conflict.key, false); } catch { setError('Could not save your choice. Please try again.'); } finally { setBusy(false); } }} variant="secondary">Use server version</Button>
         <Button disabled={busy || connection !== 'online'} onClick={async () => { setBusy(true); try { await onResolve(conflict.key, true); } catch { setError('Could not save your choice. Please try again.'); } finally { setBusy(false); } }}>Keep my change</Button>

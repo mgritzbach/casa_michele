@@ -41,6 +41,7 @@ import { Welcome } from './components/Welcome';
 import { GuestEntry } from './components/GuestEntry';
 import { SyncStatus } from './components/SyncStatus';
 import { eventJoinUrl, eventCodeFromUrl, normalizeEventCode } from './services/links';
+import { missingIngredients, filterRecipes, canGuestOrder } from './services/stock';
 import { guestRequestKey, acknowledgeGuestRequest } from './services/guestRequests';
 import { Button, BottomSheet, Toast, Badge, Toggle } from './components/UI';
 
@@ -73,7 +74,7 @@ const playOrderChime = () => {
 };
 
 // ── Constants ──────────────────────────────────────
-const VERSION = 'v5.0.0';
+const VERSION = 'v5.1.0';
 const SESSION_STORAGE_KEY = 'casa_michele_session_v1';
 
 const INGREDIENT_CATEGORIES = ['Spirit', 'Liqueur', 'Juice', 'Syrup', 'Bitter', 'Other'];
@@ -125,7 +126,11 @@ const App: React.FC = () => {
 
   // Filters
   const [filterUnavailableOnly, setFilterUnavailableOnly] = useState(false);
-  const [guestShowUnavailable, setGuestShowUnavailable] = useState(false);
+  const [guestShowUnavailable, setGuestShowUnavailable] = useState<boolean | null>(null);
+  const [makeableOnly, setMakeableOnly] = useState(false);
+  const [savingOrderPolicy, setSavingOrderPolicy] = useState(false);
+  const allowOutOfStockOrders = sync.allowOutOfStockOrders === true;
+  const showGuestUnavailable = guestShowUnavailable ?? allowOutOfStockOrders;
   const [activeCategories, setActiveCategories] = useState<string[]>(INGREDIENT_CATEGORIES);
   const [activeRecipeSpirits, setActiveRecipeSpirits] = useState<string[]>(SPIRITS_LIST);
   const [activeGuestSpirits, setActiveGuestSpirits] = useState<string[]>(SPIRITS_LIST);
@@ -333,6 +338,16 @@ const App: React.FC = () => {
     finally { pendingToggles.current.delete(ingredient); }
   };
 
+  const toggleGuestOrderPolicy = async () => {
+    if (!session?.isBartender || savingOrderPolicy) return;
+    setSavingOrderPolicy(true);
+    try {
+      await sync.queue({ kind: 'settings', key: 'settings:guestOrdering', allowOutOfStockOrders: !allowOutOfStockOrders });
+      showToast(connectionState === 'online' ? 'Guest ordering setting saved. Syncing with the bar.' : 'Setting saved on this device. Guests will receive it after sync.', 'info');
+    } catch { showToast('Could not save the guest ordering setting.', 'error'); }
+    finally { setSavingOrderPolicy(false); }
+  };
+
   const updateOrder = async (orderId: string, status: OrderStatus) => {
     if (!session?.isBartender) return;
     try {
@@ -368,7 +383,7 @@ const App: React.FC = () => {
       showToast('You are offline. Reconnect to place an order.', 'error');
       return;
     }
-    if (selectedCocktail.ingredients.some(i => availability[i])) {
+    if (!canGuestOrder(selectedCocktail, availability, allowOutOfStockOrders)) {
       showToast('Sorry, an ingredient just ran out.', 'error');
       setIsConfirmingOrder(false);
       return;
@@ -424,7 +439,7 @@ const App: React.FC = () => {
 
   const filteredGuestCocktails = useMemo(() => {
     return cocktails.filter(c => {
-      if (!guestShowUnavailable && c.ingredients.some(i => availability[i])) return false;
+      if (!showGuestUnavailable && missingIngredients(c, availability).length > 0) return false;
       if (!c.name.toLowerCase().includes(searchQuery.toLowerCase())) return false;
       const spirits = c.ingredients.filter(ing => categorizeIngredient(ing) === 'Spirit');
       const spiritMatch = spirits.length === 0
@@ -434,7 +449,10 @@ const App: React.FC = () => {
       if (activeTasteProfiles.length > 0 && !(c.tasteProfiles || []).some(p => activeTasteProfiles.includes(p))) return false;
       return true;
     });
-  }, [cocktails, searchQuery, activeGuestSpirits, availability, guestShowUnavailable, activeTasteProfiles]);
+  }, [cocktails, searchQuery, activeGuestSpirits, availability, showGuestUnavailable, activeTasteProfiles]);
+
+  const filteredRecipes = useMemo(() => filterRecipes(cocktails, availability, searchQuery, makeableOnly), [cocktails, availability, searchQuery, makeableOnly]);
+  const makeableCount = useMemo(() => cocktails.filter(c => missingIngredients(c, availability).length === 0).length, [cocktails, availability]);
 
   const outOfStockCount = useMemo(() => Object.values(availability).filter(Boolean).length, [availability]);
   const pendingOrderCount = useMemo(() => orders.filter(o => o.status === 'pending').length, [orders]);
@@ -542,7 +560,7 @@ const App: React.FC = () => {
   if (view === 'guest' && session) {
     const myOrders = orders.filter(o => o.guestName === session.guestName);
     const lastOrder = myOrders.length > 0 ? [...myOrders].sort((a, b) => b.timestamp - a.timestamp)[0] : null;
-    const isUnavailable = selectedCocktail?.ingredients.some(i => availability[i]);
+    const isUnavailable = selectedCocktail ? !canGuestOrder(selectedCocktail, availability, allowOutOfStockOrders) : false;
 
     return (
       <div className="app-shell min-h-screen bg-zinc-950 flex flex-col">
@@ -580,7 +598,7 @@ const App: React.FC = () => {
           <div className="px-4 space-y-1">
             <p className="eyebrow text-amber-400">CASA MICHELE</p><h1 className="menu-title">The cocktail menu</h1>
             <p className="text-zinc-400 text-[13px]">
-              {filteredGuestCocktails.length} cocktail{filteredGuestCocktails.length !== 1 ? 's' : ''} available
+              {filteredGuestCocktails.length} cocktail{filteredGuestCocktails.length !== 1 ? 's' : ''} on the menu
             </p>
           </div>
 
@@ -606,11 +624,11 @@ const App: React.FC = () => {
           {/* Spirit pills */}
           <div className="scroll-x py-1 px-4">
             <button
-              aria-pressed={guestShowUnavailable} onClick={() => setGuestShowUnavailable(!guestShowUnavailable)}
-              className={`pill ${guestShowUnavailable ? 'bg-red-500/15 text-red-400 border-red-500/30' : 'pill-inactive'}`}
+              aria-pressed={showGuestUnavailable} onClick={() => setGuestShowUnavailable(!showGuestUnavailable)}
+              className={`pill ${showGuestUnavailable ? 'bg-red-500/15 text-red-400 border-red-500/30' : 'pill-inactive'}`}
             >
-              {guestShowUnavailable ? <Eye size={13} /> : <EyeOff size={13} />}
-              {guestShowUnavailable ? 'Hide Sold Out' : 'Show All'}
+              {showGuestUnavailable ? <Eye size={13} /> : <EyeOff size={13} />}
+              {showGuestUnavailable ? 'Hide out of stock' : 'Show All'}
             </button>
             <div className="w-px h-5 bg-zinc-800 shrink-0 mx-0.5 self-center" />
             {SPIRITS_LIST.map(spirit => (
@@ -646,9 +664,9 @@ const App: React.FC = () => {
             <div className="col-span-full py-24 text-center space-y-3 animate-fadeIn">
               <Wine size={40} className="mx-auto text-zinc-700" />
               <p className="text-zinc-400 text-sm font-medium">No matching cocktails</p>
-              {!guestShowUnavailable && (
+              {!showGuestUnavailable && (
                 <button onClick={() => setGuestShowUnavailable(true)} className="text-amber-500 text-xs font-semibold underline underline-offset-2">
-                  Show sold out items
+                  Show out-of-stock drinks
                 </button>
               )}
             </div>
@@ -662,7 +680,7 @@ const App: React.FC = () => {
                     key={c.id}
                     role="button" tabIndex={0} aria-label={`View ${c.name}`} onKeyDown={event => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); setSelectedCocktail(c); } }}
                   onClick={() => { guestOrderKey.current = null; setSelectedCocktail(c); }}
-                    className={`group card-elevated overflow-hidden flex flex-col cursor-pointer ${isOut ? 'opacity-40 grayscale' : ''}`}
+                    className={`group card-elevated overflow-hidden flex flex-col cursor-pointer ${isOut ? 'stock-unavailable' : ''}`}
                     style={{ borderRadius: 12 }}
                   >
                     <div className="aspect-square bg-zinc-800 relative overflow-hidden">
@@ -685,7 +703,7 @@ const App: React.FC = () => {
                       <div className="absolute inset-0 bg-gradient-to-t from-zinc-950/60 via-transparent to-transparent" />
                       {isOut && (
                         <div className="absolute top-2.5 right-2.5">
-                          <Badge variant="error">Sold Out</Badge>
+                          <Badge variant="error">Out of stock</Badge>
                         </div>
                       )}
                     </div>
@@ -713,7 +731,7 @@ const App: React.FC = () => {
                   key={c.id}
                   role="button" tabIndex={0} aria-label={`View ${c.name}`} onKeyDown={event => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); setSelectedCocktail(c); } }}
                   onClick={() => { guestOrderKey.current = null; setSelectedCocktail(c); }}
-                  className={`flex items-center gap-3.5 p-3 card-flat cursor-pointer ${isOut ? 'opacity-40 grayscale' : ''}`}
+                  className={`flex items-center gap-3.5 p-3 card-flat cursor-pointer ${isOut ? 'stock-unavailable' : ''}`}
                 >
                   <div className="h-14 w-14 shrink-0 rounded-xl overflow-hidden bg-zinc-800 relative flex items-center justify-center">
                     {c.imageUrl ? (
@@ -762,6 +780,7 @@ const App: React.FC = () => {
           }
         >
           <div className="space-y-5 max-w-2xl mx-auto">
+            {selectedCocktail && missingIngredients(selectedCocktail, availability).length > 0 && <p className="rounded-lg border border-red-400/60 bg-red-500/10 p-3 text-sm text-red-200">{allowOutOfStockOrders ? 'The bartender is accepting orders for this drink despite missing stock.' : 'This drink is currently unavailable.'} Missing: {missingIngredients(selectedCocktail, availability).join(', ')}.</p>}
             <div className="aspect-[16/10] rounded-xl overflow-hidden bg-zinc-800 relative flex items-center justify-center">
               {selectedCocktail?.imageUrl ? (
                 <img src={selectedCocktail.imageUrl} alt={selectedCocktail.name} className="w-full h-full object-cover object-[center_60%]" loading="lazy"
@@ -873,6 +892,16 @@ const App: React.FC = () => {
           {/* ── STOCK TAB ── */}
           {activeTab === 'ingredients' && (
             <div>
+              <section className="mx-4 mt-4 p-4 card-flat space-y-3" aria-label="Guest ordering settings">
+                <div className="flex items-start justify-between gap-4">
+                  <div className="space-y-1">
+                    <h2 className="font-semibold text-white">Guest ordering</h2>
+                    <p className="text-sm text-zinc-300">Allow out-of-stock drinks for guests to order</p>
+                  </div>
+                  <button type="button" aria-label="Allow out-of-stock drinks for guests to order" aria-pressed={allowOutOfStockOrders} disabled={savingOrderPolicy} onClick={toggleGuestOrderPolicy} className={`shrink-0 min-h-11 min-w-16 px-4 rounded-lg border font-semibold ${allowOutOfStockOrders ? 'bg-amber-500 text-zinc-950 border-amber-500' : 'bg-zinc-800 text-zinc-200 border-zinc-600'}`}>{allowOutOfStockOrders ? 'On' : 'Off'}</button>
+                </div>
+                <p className="text-xs text-zinc-400">{allowOutOfStockOrders ? 'Guests can order drinks with missing ingredients. Stock warnings stay visible.' : 'Guests can only order drinks with every ingredient in stock.'} Changes made offline apply to guests after sync.</p>
+              </section>
               <div className="bg-zinc-950 p-4 space-y-3 border-b border-zinc-800/30">
                 <div className="relative">
                   <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 text-zinc-400" size={16} />
@@ -1076,12 +1105,19 @@ const App: React.FC = () => {
             <div className="p-4 space-y-3 max-w-4xl mx-auto w-full">
               <h2 className="text-lg font-bold text-white tracking-tight px-1 mb-1">Recipes</h2>
               <label className="block text-sm text-zinc-300">Find a recipe<input className="input-field mt-2" type="search" placeholder="Cocktail name or ingredient" value={searchQuery} onChange={event => setSearchQuery(event.target.value)} /></label>
-              {cocktails.filter(c => [c.name, ...c.ingredients].some(value => value.toLowerCase().includes(searchQuery.toLowerCase()))).map(c => (
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <p className="text-sm text-zinc-400" role="status">{makeableCount} of {cocktails.length} ready to make</p>
+                <button type="button" aria-pressed={makeableOnly} onClick={() => setMakeableOnly(value => !value)} className={`pill min-h-11 ${makeableOnly ? 'pill-active' : 'pill-inactive'}`}>Makeable only</button>
+              </div>
+              {filteredRecipes.length === 0 && <p className="py-10 text-center text-zinc-400">No recipes match. Try another search or turn off Makeable only.</p>}
+              {filteredRecipes.map(c => {
+                const missing = missingIngredients(c, availability);
+                return (
                 <div
                   key={c.id}
                   role="button" tabIndex={0} aria-label={`View ${c.name}`} onKeyDown={event => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); setSelectedCocktail(c); } }}
                   onClick={() => { guestOrderKey.current = null; setSelectedCocktail(c); }}
-                  className="flex items-center gap-3.5 p-3 card-flat cursor-pointer hover:bg-zinc-800/40 transition-colors"
+                  className={`flex items-center gap-3.5 p-3 card-flat cursor-pointer hover:bg-zinc-800/40 transition-colors ${missing.length ? 'stock-unavailable' : ''}`}
                 >
                   <div className="w-11 h-11 bg-zinc-800 rounded-xl overflow-hidden shrink-0 flex items-center justify-center">
                     {c.imageUrl ? (
@@ -1096,10 +1132,11 @@ const App: React.FC = () => {
                     <p className="text-zinc-400 text-xs font-medium uppercase tracking-wider truncate">
                       {c.ingredients.filter(i => categorizeIngredient(i) === 'Spirit').join(' · ') || 'House'}
                     </p>
+                    <p className={`mt-1 text-xs leading-relaxed ${missing.length ? 'text-red-300' : 'text-emerald-400'}`}>{missing.length ? `Missing: ${missing.join(', ')}` : 'Ready to make'}</p>
                   </div>
                   <ChevronRight size={16} className="text-zinc-700 shrink-0" />
                 </div>
-              ))}
+              ); })}
             </div>
           )}
         </main>

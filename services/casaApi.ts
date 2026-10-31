@@ -3,7 +3,7 @@ import { Cocktail, EventSession, IngredientAvailability, Order, OrderStatus } fr
 import { Mutation, Snapshot } from './offlineStore';
 
 type ApiEnvelope = { ok: boolean; error?: string; [key: string]: unknown };
-type SnapshotEnvelope = ApiEnvelope & { orders?: Record<string, unknown>[]; availability?: IngredientAvailability; revisions?: Record<string, number> };
+type SnapshotEnvelope = ApiEnvelope & { orders?: Record<string, unknown>[]; availability?: IngredientAvailability; revisions?: Record<string, number>; allowOutOfStockOrders?: boolean };
 
 export class CasaApiError extends Error {
   constructor(message: string, public readonly isSessionExpired = false) {
@@ -66,7 +66,7 @@ export const CasaApi = {
     const result = await unwrap<SnapshotEnvelope>(supabase.rpc('casa_event_snapshot_v5', {
       p_session_token: sessionToken,
     }));
-    return { orders: (result.orders || []).map(mapOrderFromDB), availability: result.availability || {}, revisions: result.revisions || {}, savedAt: Date.now() };
+    return { orders: (result.orders || []).map(mapOrderFromDB), availability: result.availability || {}, revisions: result.revisions || {}, savedAt: Date.now(), allowOutOfStockOrders: result.allowOutOfStockOrders === true };
   },
 
   async applyMutation(sessionToken: string, mutation: Mutation): Promise<{ conflict?: boolean; revision?: number; error?: string }> {

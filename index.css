@@ -86,3 +86,6 @@ button:disabled { cursor: default; }
 body::before { content: ""; position: fixed; top: 0; left: 0; right: 0; height: var(--casa-safe-top); background: var(--surface); z-index: 120; pointer-events: none; }
 .sheet-container > [role=dialog] { max-height: calc(100dvh - var(--casa-safe-top) - 24px); }
 .toast { top: calc(20px + var(--casa-safe-top)); }
+
+.card-flat.stock-unavailable, .card-elevated.stock-unavailable { border: 2px solid #f87171; }
+.card-flat.stock-unavailable:hover, .card-elevated.stock-unavailable:hover { border-color: #fca5a5; }
