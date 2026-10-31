@@ -74,7 +74,7 @@ const playOrderChime = () => {
 };
 
 // ── Constants ──────────────────────────────────────
-const VERSION = 'v5.1.0';
+const VERSION = 'v5.1.1';
 const SESSION_STORAGE_KEY = 'casa_michele_session_v1';
 
 const INGREDIENT_CATEGORIES = ['Spirit', 'Liqueur', 'Juice', 'Syrup', 'Bitter', 'Other'];
