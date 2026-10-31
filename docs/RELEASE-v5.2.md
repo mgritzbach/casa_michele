@@ -51,9 +51,13 @@ All 53 packaged web files match the tested production build byte for byte.
 
 ## Deployment and maintenance
 
-The branch preview deploys through the connected Cloudflare build. Production
-remains on v5.0 pending Cloudflare authorization, including the prior stock UI
-update. Do not confuse the release button with a website deployment mechanism.
+Production v5.2 is deployed at https://casa-michele.mic-gritzbach.workers.dev
+as Cloudflare version c6d4597a-f6ec-49ea-a2eb-6266de701d67. All 54 public build
+files match the tested local build. Production event SMVWI7M4D passes recipe
+stock indicators, filters, offline policy persistence, reconnect and guest
+ordering. The production update button reads the real v5.2 GitHub release.
+The production QR host and public Android association are unchanged.
+The final source CI also passes: run 41210042092.
 No database changes are needed for this release.
 
 Publish a higher package version and Android versionCode, use the existing key,

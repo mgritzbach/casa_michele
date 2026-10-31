@@ -53,10 +53,9 @@ The downloaded release asset matches the SHA-256 above.
 The additive migration 20261031133618_event_stock_order_policy.sql is applied to
 the existing Supabase project. It preserves prior clients and event data.
 
-The production website update is pending Cloudflare authentication. Production
-still serves v5.0 until that deployment is completed. Older guest web clients
-continue to hide unavailable drinks, so the new guest override requires v5.1
-on both the bartender and guest client.
+The production website now runs v5.2, including these stock controls.
+See RELEASE-v5.2.md for live verification and the Cloudflare deployment version.
+Older cached guest clients require the web update to see the ordering override.
 
 The v5.1 branch preview is published at
 https://codex-offline-cross-platform-casa-michele.mic-gritzbach.workers.dev.
