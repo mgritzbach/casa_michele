@@ -1,8 +1,9 @@
 import { supabase } from './supabase';
 import { Cocktail, EventSession, IngredientAvailability, Order, OrderStatus } from '../types';
+import { Mutation, Snapshot } from './offlineStore';
 
 type ApiEnvelope = { ok: boolean; error?: string; [key: string]: unknown };
-type SnapshotEnvelope = ApiEnvelope & { orders?: Record<string, unknown>[]; availability?: IngredientAvailability };
+type SnapshotEnvelope = ApiEnvelope & { orders?: Record<string, unknown>[]; availability?: IngredientAvailability; revisions?: Record<string, number>; allowOutOfStockOrders?: boolean };
 
 export class CasaApiError extends Error {
   constructor(message: string, public readonly isSessionExpired = false) {
@@ -29,6 +30,8 @@ export const mapOrderFromDB = (row: Record<string, unknown>): Order => ({
   eventCode: String(row.event_code),
   guestName: String(row.guest_name || 'Guest'),
   guestPhone: row.guest_phone ? String(row.guest_phone) : undefined,
+  guestEmail: row.guest_email ? String(row.guest_email) : undefined,
+  revision: Number(row.revision || 0),
   cocktailId: String(row.cocktail_id),
   cocktailName: String(row.cocktail_name),
   status: row.status as OrderStatus,
@@ -46,27 +49,39 @@ export const CasaApi = {
     };
   },
 
-  async startGuestSession(eventCode: string, guestName: string, guestPhone?: string): Promise<EventSession> {
-    const result = await unwrap<ApiEnvelope>(supabase.rpc('casa_begin_guest_session', {
-      p_event_code: eventCode, p_guest_name: guestName, p_guest_phone: guestPhone || null,
+  async startGuestSession(eventCode: string, guestName: string, guestPhone?: string, guestEmail?: string): Promise<EventSession> {
+    const result = await unwrap<ApiEnvelope>(supabase.rpc('casa_begin_guest_session_v5', {
+      p_event_code: eventCode, p_guest_name: guestName, p_guest_phone: guestPhone || null, p_guest_email: guestEmail || null,
     }));
     return {
       eventCode: String(result.eventCode), isBartender: false,
       guestName: String(result.guestName),
       guestPhone: result.guestPhone ? String(result.guestPhone) : undefined,
+      guestEmail: result.guestEmail ? String(result.guestEmail) : undefined,
       token: String(result.token), expiresAt: String(result.expiresAt),
     };
   },
 
-  async getSnapshot(sessionToken: string): Promise<{ orders: Order[]; availability: IngredientAvailability }> {
-    const result = await unwrap<SnapshotEnvelope>(supabase.rpc('casa_event_snapshot', {
+  async getSnapshot(sessionToken: string): Promise<Snapshot> {
+    const result = await unwrap<SnapshotEnvelope>(supabase.rpc('casa_event_snapshot_v5', {
       p_session_token: sessionToken,
     }));
-    return { orders: (result.orders || []).map(mapOrderFromDB), availability: result.availability || {} };
+    return { orders: (result.orders || []).map(mapOrderFromDB), availability: result.availability || {}, revisions: result.revisions || {}, savedAt: Date.now(), allowOutOfStockOrders: result.allowOutOfStockOrders === true };
+  },
+
+  async applyMutation(sessionToken: string, mutation: Mutation): Promise<{ conflict?: boolean; revision?: number; error?: string }> {
+    const { data, error } = await supabase.rpc('casa_apply_mutation', {
+      p_session_token: sessionToken, p_mutation_id: mutation.id,
+      p_kind: mutation.kind, p_payload: mutation, p_expected_revision: mutation.expectedRevision,
+    });
+    if (error) throw new CasaApiError(error.message);
+    if (data?.conflict) return data;
+    if (!data?.ok) throw new CasaApiError(data?.error || 'Could not sync this change.', /expired|access is required/i.test(data?.error || ''));
+    return data;
   },
 
   async placeOrder(sessionToken: string, cocktail: Cocktail, idempotencyKey: string): Promise<void> {
-    await unwrap<ApiEnvelope>(supabase.rpc('casa_place_order', {
+    await unwrap<ApiEnvelope>(supabase.rpc('casa_place_order_v5', {
       p_session_token: sessionToken,
       p_cocktail_id: cocktail.id,
       p_cocktail_name: cocktail.name,

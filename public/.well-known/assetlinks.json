@@ -1,0 +1,18 @@
+[
+  {
+    "relation": ["delegate_permission/common.handle_all_urls"],
+    "target": {
+      "namespace": "android_app",
+      "package_name": "com.casamichele.app",
+      "sha256_cert_fingerprints": ["E4:A5:5A:14:2E:D2:2C:92:C0:98:05:A8:6A:CD:48:D1:12:76:B0:FB:5F:FE:3A:EF:9D:76:19:3F:CD:20:C6:ED"]
+    }
+  },
+  {
+    "relation": ["delegate_permission/common.handle_all_urls"],
+    "target": {
+      "namespace": "android_app",
+      "package_name": "com.casamichele.app.preview",
+      "sha256_cert_fingerprints": ["E4:A5:5A:14:2E:D2:2C:92:C0:98:05:A8:6A:CD:48:D1:12:76:B0:FB:5F:FE:3A:EF:9D:76:19:3F:CD:20:C6:ED"]
+    }
+  }
+]

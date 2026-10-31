@@ -1,0 +1,733 @@
+[
+  {
+    "id": "cocktail-espresso-martini",
+    "imageUrl": "/images/cocktails/cocktail-espresso-martini.webp",
+    "name": "Espresso Martini",
+    "description": "Classic, sweet, smooth, and keeps you awake",
+    "ingredients": [
+      "Vodka",
+      "Kahlua",
+      "Coffee",
+      "(Syrup) Sugar / Sugar Syrup"
+    ],
+    "instructions": "• 2oz (6cl) Vodka\n• 0.5oz (1.5cl) Kahlua\n• 0.5oz (1.5cl) Syrup\n• 1oz (3cl) Coffee\n• Shake on Ice, filter, decorate (cocoa/beans)",
+    "tasteProfiles": [
+      "Sweet"
+    ]
+  },
+  {
+    "id": "cocktail-whisky-sour-blue-curasour",
+    "imageUrl": "/images/cocktails/cocktail-whisky-sour-blue-curasour.webp",
+    "name": "Whisky Sour / Blue Curasour",
+    "description": "Smooth, sweet, sour, with a slight smoky note",
+    "ingredients": [
+      "Bourbon",
+      "(Juice) Citrus Juice",
+      "(Syrup) Sugar / Sugar Syrup",
+      "(Syrup) Blue Curacao",
+      "Foamer"
+    ],
+    "instructions": "• 4.5cl Bourbon Whisky\n• 3cl Citrus Juice (+ orange skin)\n• 1.5cl Syrup (sugar or Blue Curacao)\n• 1 Egg White\n• Shake on Ice, filter, decorate (orange skin)",
+    "tasteProfiles": [
+      "Sweet",
+      "Sour",
+      "Strong"
+    ]
+  },
+  {
+    "id": "cocktail-pina-colada",
+    "imageUrl": "/images/cocktails/cocktail-pina-colada.webp",
+    "name": "Pina Colada",
+    "description": "Very creamy with strong beach vibes",
+    "ingredients": [
+      "Rum",
+      "(Juice) Citrus Juice",
+      "Coconut Cream/Milk",
+      "Cream",
+      "(Juice) Pineapple Juice",
+      "Powdered Sugar"
+    ],
+    "instructions": "• 2 drops of Citrus Juice\n• 4cl Coconut Milk\n• 2cl Cream\n• 6cl Rum\n• 8cl Pineapple Juice\n• Ice or frozen Pineapple\n• 1 big spoon of Powdered Sugar\n• Blend and put in glass full of ice",
+    "tasteProfiles": [
+      "Sweet",
+      "Strong",
+      "Fruity",
+      "Creamy"
+    ]
+  },
+  {
+    "id": "cocktail-swimming-pool",
+    "imageUrl": "/images/cocktails/cocktail-swimming-pool.webp",
+    "name": "Swimming Pool",
+    "description": "Theoretically just an extended blue Pina Colada",
+    "ingredients": [
+      "Vodka",
+      "Rum",
+      "(Juice) Pineapple Juice",
+      "Coconut Cream/Milk",
+      "Cream"
+    ],
+    "instructions": "• 6cl Pineapple Juice\n• 2cl Vodka\n• 2cl Rum\n• 2cl Coconut Cream / Milk\n• 2cl Cream\n• 1cl Blue Curacao Syrup\n• 2 Ice Cubes\n• Crushed Ice",
+    "tasteProfiles": [
+      "Sweet",
+      "Creamy",
+      "Herbal",
+      "Refreshing"
+    ]
+  },
+  {
+    "id": "cocktail-mojito",
+    "imageUrl": "/images/cocktails/cocktail-mojito.webp",
+    "name": "Mojito",
+    "description": "A refreshing classic; holiday feeling meets Havanna",
+    "ingredients": [
+      "Rum",
+      "(Syrup) Sugar / Sugar Syrup",
+      "Mint Leaves",
+      "Soda Water / Sparkling Water"
+    ],
+    "instructions": "• 5cl Rum\n• 2 Teaspoons Sugar\n• 0.5 Limes\n• 2 Mint Leaves\n• Grind and fill with crushed ice & sparkling water",
+    "tasteProfiles": [
+      "Refreshing"
+    ]
+  },
+  {
+    "id": "cocktail-daiquiri",
+    "imageUrl": "/images/cocktails/cocktail-daiquiri.webp",
+    "name": "Daiquiri",
+    "description": "Refreshing, sour, and dangerously easy to drink",
+    "ingredients": [
+      "Rum",
+      "(Juice) Lime Juice",
+      "(Syrup) Sugar / Sugar Syrup"
+    ],
+    "instructions": "• 2oz (6cl) White Rum\n• 1oz (3cl) Lime Juice\n• 0.5oz (1.5 cl) Syrup\n• Shake on ice, strain, garnish with sugar rim",
+    "tasteProfiles": [
+      "Sour",
+      "Herbal",
+      "Refreshing"
+    ]
+  },
+  {
+    "id": "cocktail-appletini",
+    "imageUrl": "/images/cocktails/cocktail-appletini.webp",
+    "name": "Appletini",
+    "description": "Strong on the sour apple part; for JD fans",
+    "ingredients": [
+      "Vodka",
+      "Apple Schnapps",
+      "(Juice) Citrus Juice",
+      "(Juice) Apple Juice",
+      "(Syrup) Sugar / Sugar Syrup"
+    ],
+    "instructions": "• 4.5cl Vodka\n• 2.5cl Citrus Juice\n• 2cl Apple Schnapps\n• 2cl Apple Juice\n• 2.5cl Syrup\n• Shake with Ice and strain",
+    "tasteProfiles": [
+      "Sweet",
+      "Sour",
+      "Strong",
+      "Fruity"
+    ]
+  },
+  {
+    "id": "cocktail-aviation",
+    "imageUrl": "/images/cocktails/cocktail-aviation.webp",
+    "name": "Aviation",
+    "description": "Something extravagant or floral; unique flower drink",
+    "ingredients": [
+      "Gin",
+      "Crème de Violette",
+      "Maraschino",
+      "(Juice) Citrus Juice"
+    ],
+    "instructions": "• 5cl Gin (Roku preferred)\n• 1.5 cl Crème de Violette\n• 1 cl Maraschino\n• 1.5 cl Citrus Juice\n• Shake with Ice / stir in ice and strain\n• Garnish with brandied cherry, black berry or sugar rim",
+    "tasteProfiles": [
+      "Sour",
+      "Strong",
+      "Herbal"
+    ]
+  },
+  {
+    "id": "cocktail-grasshopper",
+    "imageUrl": "/images/cocktails/cocktail-grasshopper.webp",
+    "name": "Grasshopper",
+    "description": "Think mint and chocolate; „After Eight“",
+    "ingredients": [
+      "Crème de Mente",
+      "Crème de Cacao",
+      "Cream"
+    ],
+    "instructions": "• 3cl Crème de Mente (Pfeffi)\n• 3cl Crème de Cacao\n• 4cl Cream\n• Shake with Ice and strain in glass\n• Garnish with peppermint leaves, chocolate rim, or whipped cream + chocolate",
+    "tasteProfiles": [
+      "Sweet",
+      "Creamy"
+    ]
+  },
+  {
+    "id": "cocktail-side-car",
+    "imageUrl": "/images/cocktails/cocktail-side-car.webp",
+    "name": "Side Car",
+    "description": "A refined, citrusy classic",
+    "ingredients": [
+      "Cognac",
+      "Cointreau",
+      "(Juice) Citrus Juice"
+    ],
+    "instructions": "• 4cl Cognac\n• 2cl Gran Manier\n• 2cl Citrus Juice\n• Sugar Rim + Orange Cest",
+    "tasteProfiles": [
+      "Sour",
+      "Strong"
+    ]
+  },
+  {
+    "id": "cocktail-boulevardier",
+    "imageUrl": "/images/cocktails/cocktail-boulevardier.webp",
+    "name": "Boulevardier",
+    "description": "The “original” Negroni, but with whisky",
+    "ingredients": [
+      "Bourbon",
+      "Sweet Vermouth",
+      "Campari"
+    ],
+    "instructions": "• 4cl Bourbon\n• 3cl Campari\n• 3cl Sweet Vermouth\n• Style: Orange Cest",
+    "tasteProfiles": [
+      "Bitter",
+      "Strong"
+    ]
+  },
+  {
+    "id": "cocktail-negroni",
+    "imageUrl": "/images/cocktails/cocktail-negroni.webp",
+    "name": "Negroni",
+    "description": "Bittersweet and herbal; iconic aperitif",
+    "ingredients": [
+      "Gin",
+      "Sweet Vermouth",
+      "Campari"
+    ],
+    "instructions": "• 3cl Gin\n• 3cl Campari\n• 3cl Sweet Vermouth\n• Style: Orange Cest/Peel",
+    "tasteProfiles": [
+      "Sweet",
+      "Bitter",
+      "Strong",
+      "Herbal"
+    ]
+  },
+  {
+    "id": "cocktail-pink-lady",
+    "imageUrl": "/images/cocktails/cocktail-pink-lady.webp",
+    "name": "Pink Lady",
+    "description": "Beautiful and balanced; fruity apple drink",
+    "ingredients": [
+      "Gin",
+      "Calvados (Apple Brandy)",
+      "(Juice) Citrus Juice",
+      "(Syrup) Grenadine Syrup",
+      "Egg White / Foamer"
+    ],
+    "instructions": "• 4.5cl London Dry Gin\n• 1.5cl Calvados/Apple Brandy\n• 2cl Citrus Juice\n• 1cl Grenadine\n• 1 Egg White\n• Style: Maraschino",
+    "tasteProfiles": [
+      "Sweet",
+      "Strong",
+      "Fruity"
+    ]
+  },
+  {
+    "id": "cocktail-watermelon-mojito",
+    "imageUrl": "/images/cocktails/cocktail-watermelon-mojito.webp",
+    "name": "Watermelon Mojito",
+    "description": "Mojito, but with a more tropical note",
+    "ingredients": [
+      "Rum",
+      "Watermelon",
+      "Mint Leaves",
+      "(Syrup) Sugar / Sugar Syrup",
+      "Soda Water / Sparkling Water"
+    ],
+    "instructions": "• 6cl White Rum\n• 3 Slices Watermelon (mashed)\n• 6 Mint Leaves\n• 1.5cl Sugar Syrup\n• Soda Water",
+    "tasteProfiles": [
+      "Sweet",
+      "Fruity",
+      "Refreshing"
+    ]
+  },
+  {
+    "id": "cocktail-singapore-sling",
+    "imageUrl": "/images/cocktails/cocktail-singapore-sling.webp",
+    "name": "Singapore Sling",
+    "description": "Exotic and refreshing with cherry and citrus",
+    "ingredients": [
+      "Gin",
+      "Maraschino",
+      "Cointreau",
+      "(Syrup) Grenadine Syrup",
+      "(Juice) Lime Juice",
+      "(Juice) Pineapple Juice",
+      "(Bitter) Angostura Bitters",
+      "Soda Water / Sparkling Water"
+    ],
+    "instructions": "• 2cl Gin\n• 1cl Cherry Liqor\n• 1cl Gran Manier\n• 0.5cl Grenadine\n• 0.5cl Lime Juice\n• 5-6cl Pineapple Juice\n• 1 Dash Angostura Bitters\n• 2cl Soda Water",
+    "tasteProfiles": [
+      "Sweet",
+      "Fruity",
+      "Herbal",
+      "Refreshing"
+    ]
+  },
+  {
+    "id": "cocktail-gin-fizz",
+    "imageUrl": "/images/cocktails/cocktail-gin-fizz.webp",
+    "name": "Gin Fizz",
+    "description": "Nice citrus-loaded option",
+    "ingredients": [
+      "Gin",
+      "(Juice) Citrus Juice",
+      "(Syrup) Sugar / Sugar Syrup",
+      "Soda Water / Sparkling Water",
+      "Egg White / Foamer"
+    ],
+    "instructions": "• 5cl Gin\n• 3cl Citrus Juice\n• 2cl Syrup\n• Shake with Ice and strain in ice filled glass\n• Fill up with soda water",
+    "tasteProfiles": [
+      "Sour",
+      "Refreshing"
+    ]
+  },
+  {
+    "id": "cocktail-orange-margarita",
+    "imageUrl": "/images/cocktails/cocktail-orange-margarita.webp",
+    "name": "Orange Margarita",
+    "description": "Tequila is normally too bitter, but you still want that orange BANG",
+    "ingredients": [
+      "Tequila",
+      "Cointreau",
+      "(Juice) Orange Juice",
+      "(Syrup) Sugar / Sugar Syrup"
+    ],
+    "instructions": "• 4cl Silver / Blanco Tequila\n• 2cl Cointreau\n• 6cl Orange Juice\n• 0.5 – 1cl Syrup\n• Garnish with orange skin or chocolate",
+    "tasteProfiles": [
+      "Sour",
+      "Bitter",
+      "Fruity"
+    ]
+  },
+  {
+    "id": "cocktail-tequila-sunrise",
+    "imageUrl": "/images/cocktails/cocktail-tequila-sunrise.webp",
+    "name": "Tequila Sunrise",
+    "description": "You like sweet orange drinks, but you hate the taste of tequila",
+    "ingredients": [
+      "Tequila",
+      "(Juice) Orange Juice",
+      "(Syrup) Grenadine Syrup"
+    ],
+    "instructions": "• 4cl Blanco Tequila to chilled glass (ice)\n• 8cl Orange Juice\n• 0.5cl Grenadine (careful so it sinks)",
+    "tasteProfiles": [
+      "Sweet",
+      "Fruity"
+    ]
+  },
+  {
+    "id": "cocktail-orange-martini",
+    "imageUrl": "/images/cocktails/cocktail-orange-martini.webp",
+    "name": "Orange Martini",
+    "description": "Relaxed morning cocktail",
+    "ingredients": [
+      "Vodka",
+      "Cointreau",
+      "(Juice) Orange Juice",
+      "(Syrup) Sugar / Sugar Syrup"
+    ],
+    "instructions": "• 4cl Vodka\n• 2cl Cointreau\n• 4cl Orange Juice\n• 1cl Syrup",
+    "tasteProfiles": [
+      "Sweet",
+      "Strong",
+      "Fruity"
+    ]
+  },
+  {
+    "id": "cocktail-brandy-alexander",
+    "imageUrl": "/images/cocktails/cocktail-brandy-alexander.webp",
+    "name": "Brandy Alexander",
+    "description": "Rich and creamy with a touch of elegance. Milk-Dessert in a glass",
+    "ingredients": [
+      "Cognac",
+      "Crème de Cacao",
+      "Cream"
+    ],
+    "instructions": "• 4.5cl Cognac\n• 3cl Creme de Cacao\n• 3cl Cream\n• Style: Nut Meg or Choco",
+    "tasteProfiles": [
+      "Sweet",
+      "Strong",
+      "Creamy"
+    ]
+  },
+  {
+    "id": "cocktail-old-fashioned",
+    "imageUrl": "/images/cocktails/cocktail-old-fashioned.webp",
+    "name": "Old Fashioned",
+    "description": "Simple, strong, and timeless",
+    "ingredients": [
+      "Bourbon",
+      "(Syrup) Sugar / Sugar Syrup",
+      "(Bitter) Angostura Bitters"
+    ],
+    "instructions": "• 6cl Bourbon\n• 1ts Sugar\n• 3 dash Angostura bitters\n• Style: Orange Cest",
+    "tasteProfiles": [
+      "Sweet",
+      "Bitter",
+      "Strong"
+    ]
+  },
+  {
+    "id": "cocktail-jack-rose",
+    "imageUrl": "/images/cocktails/cocktail-jack-rose.webp",
+    "name": "Jack Rose",
+    "description": "Fruit-forward and vibrant",
+    "ingredients": [
+      "Calvados (Apple Brandy)",
+      "(Juice) Citrus Juice",
+      "(Syrup) Grenadine Syrup"
+    ],
+    "instructions": "• 6cl Calvados\n• 3cl Citrus Juice\n• 1.5cl Grenadine\n• Style: Citrus Cest",
+    "tasteProfiles": [
+      "Sour",
+      "Strong",
+      "Fruity"
+    ]
+  },
+  {
+    "id": "cocktail-cosmopolitan",
+    "imageUrl": "/images/cocktails/cocktail-cosmopolitan.webp",
+    "name": "Cosmopolitan",
+    "description": "The ideal cocktail for a party",
+    "ingredients": [
+      "Vodka",
+      "Cointreau",
+      "(Juice) Cranberry Juice",
+      "(Juice) Lime Juice"
+    ],
+    "instructions": "• 4cl Vodka\n• 2cl Gran Manier\n• 2cl Cranberry Juice\n• 2cl Lime Juice\n• Style: Orange Cest",
+    "tasteProfiles": [
+      "Sour",
+      "Fruity"
+    ]
+  },
+  {
+    "id": "cocktail-vesper",
+    "imageUrl": "/images/cocktails/cocktail-vesper.webp",
+    "name": "Vesper",
+    "description": "A unique Gin-based drink with various smooth notes",
+    "ingredients": [
+      "Gin",
+      "Vodka",
+      "Lillet"
+    ],
+    "instructions": "• 6cl Gin\n• 2cl Vodka\n• 1-2cl Lillet",
+    "tasteProfiles": [
+      "Strong",
+      "Herbal"
+    ]
+  },
+  {
+    "id": "cocktail-hemingway-daiquiri",
+    "imageUrl": "/images/cocktails/cocktail-hemingway-daiquiri.webp",
+    "name": "Hemingway Daiquiri",
+    "description": "More fruity and sour since Hemingway did not like sugar",
+    "ingredients": [
+      "Rum",
+      "Maraschino",
+      "(Juice) Lime Juice",
+      "(Juice) Grapefruit Juice"
+    ],
+    "instructions": "• 6cl White Rum\n• 1.5cl Maraschino Liqueur\n• 2 cl Lime Juice\n• 1.5 cl Grapefruit Juice\n• Style: Lime",
+    "tasteProfiles": [
+      "Sour",
+      "Fruity",
+      "Herbal",
+      "Refreshing"
+    ]
+  },
+  {
+    "id": "cocktail-lavender-gin-sour",
+    "imageUrl": "/images/cocktails/cocktail-lavender-gin-sour.webp",
+    "name": "Lavender Gin Sour",
+    "description": "Floral and refreshing",
+    "ingredients": [
+      "Gin",
+      "(Juice) Citrus Juice",
+      "(Syrup) Lavender Syrup",
+      "Egg White / Foamer"
+    ],
+    "instructions": "• 4.5cl Gin\n• 1.5cl Citrus Juice\n• 1.5cl Lavender Syrup\n• 1 Egg White\n• Garnish with lavender or sugar rim",
+    "tasteProfiles": [
+      "Sour",
+      "Bitter",
+      "Herbal",
+      "Refreshing"
+    ]
+  },
+  {
+    "id": "cocktail-kapp-heinz",
+    "imageUrl": "/images/cocktails/cocktail-kapp-heinz.webp",
+    "name": "Kapp-Heinz",
+    "description": "A family special: Sweet, smooth and strong",
+    "ingredients": [
+      "Calvados (Apple Brandy)",
+      "Cointreau"
+    ],
+    "instructions": "• 3cl Calvados\n• 3cl Gran Manier\n• Garnish with half apple wheel & orange skin",
+    "tasteProfiles": [
+      "Sweet",
+      "Bitter",
+      "Strong",
+      "Herbal"
+    ]
+  },
+  {
+    "id": "cocktail-clover-club",
+    "imageUrl": "/images/cocktails/cocktail-clover-club.webp",
+    "name": "Clover Club",
+    "description": "Fruity and elegant with a silky texture",
+    "ingredients": [
+      "Gin",
+      "(Juice) Citrus Juice",
+      "(Syrup) Raspberry Syrup",
+      "Egg White / Foamer"
+    ],
+    "instructions": "• 6cl Gin\n• 1.5cl Citrus Juice\n• 1.5cl Raspberry Syrup\n• 1 Egg White\n• Garnish with 3 Raspberries",
+    "tasteProfiles": [
+      "Sweet",
+      "Fruity"
+    ]
+  },
+  {
+    "id": "cocktail-french-martini",
+    "imageUrl": "/images/cocktails/cocktail-french-martini.webp",
+    "name": "French Martini",
+    "description": "Sweet and sophisticated",
+    "ingredients": [
+      "Vodka",
+      "(Syrup) Raspberry Syrup",
+      "(Juice) Pineapple Juice"
+    ],
+    "instructions": "• 5cl Vodka\n• 0.5-1cl Raspberry Syrup\n• 4cl Pineapple Juice",
+    "tasteProfiles": [
+      "Sweet",
+      "Fruity"
+    ]
+  },
+  {
+    "id": "cocktail-strawberry-jam-sour",
+    "imageUrl": "/images/cocktails/cocktail-strawberry-jam-sour.webp",
+    "name": "Strawberry Jam Sour",
+    "description": "Too late for breakfast but you want strawberry jam",
+    "ingredients": [
+      "Gin",
+      "Strawberry Jam / Strawberries",
+      "(Juice) Citrus Juice",
+      "Egg White / Foamer"
+    ],
+    "instructions": "• 6cl Gin\n• 2 Barspoons Strawberry Jam\n• 3cl Citrus Juice\n• 1 Egg White",
+    "tasteProfiles": [
+      "Sweet",
+      "Sour",
+      "Fruity"
+    ]
+  },
+  {
+    "id": "cocktail-blue-lady",
+    "imageUrl": "/images/cocktails/cocktail-blue-lady.webp",
+    "name": "Blue Lady",
+    "description": "Silky-smooth with beautiful orange and citrus finish",
+    "ingredients": [
+      "Gin",
+      "Blue Curacao",
+      "(Juice) Citrus Juice",
+      "Egg White / Foamer",
+      "(Bitter) Orange Bitters"
+    ],
+    "instructions": "• 4.5cl Gin\n• 2.5cl Blue Curacao\n• 3cl Citrus Juice\n• 1cl Sugar Syrup\n• 1 Egg White\n• 3 Dashed Orange Bitters",
+    "tasteProfiles": [
+      "Sweet",
+      "Fruity"
+    ]
+  },
+  {
+    "id": "cocktail-aperol-sour",
+    "imageUrl": "/images/cocktails/cocktail-aperol-sour.webp",
+    "name": "Aperol Sour",
+    "description": "Decision between a sour and an Aperol Spritz",
+    "ingredients": [
+      "Gin",
+      "Aperol",
+      "(Juice) Citrus Juice",
+      "(Syrup) Sugar / Sugar Syrup",
+      "Egg White / Foamer"
+    ],
+    "instructions": "• 3cl Gin\n• 6cl Aperol\n• 3cl Citrus Juice\n• 1.5cl Sugar Syrup\n• 1 Egg White",
+    "tasteProfiles": [
+      "Sour",
+      "Bitter"
+    ]
+  },
+  {
+    "id": "cocktail-coconut-campari-sour",
+    "imageUrl": "/images/cocktails/cocktail-coconut-campari-sour.webp",
+    "name": "Coconut & Campari Sour",
+    "description": "If you like Negronis and Pina Coladas",
+    "ingredients": [
+      "Gin",
+      "Campari",
+      "(Juice) Citrus Juice",
+      "Coconut Cream/Milk",
+      "(Syrup) Sugar / Sugar Syrup",
+      "Egg White / Foamer"
+    ],
+    "instructions": "• 2.5cl Gin\n• 2.5cl Campari\n• 2.5cl Citrus Juice\n• 2.5cl Coconut cream\n• 1.5cl Sugar Syrup\n• 1 Egg White",
+    "tasteProfiles": [
+      "Sour",
+      "Bitter",
+      "Creamy"
+    ]
+  },
+  {
+    "id": "cocktail-crystal-skies",
+    "imageUrl": "/images/cocktails/cocktail-crystal-skies.webp",
+    "name": "Crystal Skies",
+    "description": "Refreshing culinary trip to Latin America",
+    "ingredients": [
+      "Pisco",
+      "Blue Curacao",
+      "(Juice) Lime Juice",
+      "Honey"
+    ],
+    "instructions": "• 6cl Pisco\n• 2cl Lime Juice\n• 1.5cl Blue Curacao\n• 1cl Honey",
+    "tasteProfiles": [
+      "Fruity",
+      "Refreshing"
+    ]
+  },
+  {
+    "id": "cocktail-pineapple-bourbon-sour",
+    "imageUrl": "/images/cocktails/cocktail-pineapple-bourbon-sour.webp",
+    "name": "Pineapple Bourbon Sour",
+    "description": "If a Whisky Sour is not enough summer feeling",
+    "ingredients": [
+      "Bourbon",
+      "(Juice) Pineapple Juice",
+      "(Juice) Citrus Juice",
+      "Honey",
+      "Egg White / Foamer"
+    ],
+    "instructions": "• 6cl Bourbon\n• 2cl Pineapple Juice\n• 1.5cl Citrus Juice\n• 1cl Honey\n• 1 Egg White",
+    "tasteProfiles": [
+      "Sweet",
+      "Sour",
+      "Fruity"
+    ]
+  },
+  {
+    "id": "cocktail-straw-berry-negroni-sour",
+    "imageUrl": "/images/cocktails/cocktail-straw-berry-negroni-sour.webp",
+    "name": "(Straw)berry Negroni Sour",
+    "description": "If a classic Negroni is too bitter",
+    "ingredients": [
+      "Gin",
+      "Sweet Vermouth",
+      "Campari",
+      "Strawberry Jam / Strawberries",
+      "(Juice) Citrus Juice",
+      "(Syrup) Sugar / Sugar Syrup",
+      "Egg White / Foamer"
+    ],
+    "instructions": "• 3cl Gin\n• 3cl Sweet Vermouth\n• 3cl Campari\n• 2 Strawberries (muddled)\n• 3cl Citrus Juice\n• 1.5cl Syrup\n• 1 Egg White",
+    "tasteProfiles": [
+      "Bitter",
+      "Strong",
+      "Herbal"
+    ]
+  },
+  {
+    "id": "cocktail-manhattan",
+    "imageUrl": "/images/cocktails/cocktail-manhattan.webp",
+    "name": "Manhattan",
+    "description": "A sophisticated, smooth classic",
+    "ingredients": [
+      "Bourbon",
+      "Sweet Vermouth",
+      "(Bitter) Angostura Bitters"
+    ],
+    "instructions": "• 4cl Bourbon/Rye\n• 2cl Sweet Vermouth\n• 2 Dashes Angostura Bitters",
+    "tasteProfiles": [
+      "Bitter",
+      "Strong"
+    ]
+  },
+  {
+    "id": "cocktail-white-russian",
+    "imageUrl": "/images/cocktails/cocktail-white-russian.webp",
+    "name": "White Russian",
+    "description": "Decadent and creamy coffee dessert",
+    "ingredients": [
+      "Vodka",
+      "Kahlua",
+      "Cream"
+    ],
+    "instructions": "• 4cl Vodka\n• 2cl Kahlua\n• 2cl Cream",
+    "tasteProfiles": [
+      "Sweet",
+      "Strong",
+      "Creamy"
+    ]
+  },
+  {
+    "id": "cocktail-dark-n-stormy",
+    "imageUrl": "/images/cocktails/cocktail-dark-n-stormy.webp",
+    "name": "Dark’n’Stormy",
+    "description": "Bold and spicy, Caribbean style",
+    "ingredients": [
+      "Rum",
+      "(Juice) Lime Juice",
+      "Ginger Beer"
+    ],
+    "instructions": "• 4cl Rum (Dark)\n• 1cl Lime Juice\n• 6cl Ginger Beer\n• Garnish: Ginger and Lime Wheel",
+    "tasteProfiles": []
+  },
+  {
+    "id": "cocktail-mai-tai",
+    "imageUrl": "/images/cocktails/cocktail-mai-tai.webp",
+    "name": "Mai Tai",
+    "description": "A tropical classic, rich and vibrant",
+    "ingredients": [
+      "Rum",
+      "Amaretto",
+      "Cointreau",
+      "(Juice) Pineapple Juice",
+      "(Syrup) Sugar / Sugar Syrup",
+      "(Juice) Lime Juice"
+    ],
+    "instructions": "• 5cl Rum (dark)\n• 1-2cl Amaretto\n• 2cl Gran Manier\n• 5cl Pineapple Juice\n• 2cl Syrup\n• 1cl Lime Juice",
+    "tasteProfiles": [
+      "Sweet",
+      "Strong",
+      "Fruity"
+    ]
+  },
+  {
+    "id": "cocktail-amaretto-sour",
+    "imageUrl": "/images/cocktails/cocktail-amaretto-sour.webp",
+    "name": "Amaretto Sour",
+    "description": "Sweet and tangy delight with almond flavor",
+    "ingredients": [
+      "Bourbon",
+      "Amaretto",
+      "(Juice) Citrus Juice",
+      "(Syrup) Sugar / Sugar Syrup",
+      "Egg White / Foamer"
+    ],
+    "instructions": "• 3cl Amaretto\n• 1.5cl Bourbon\n• 2cl Citrus Juice\n• 0.5cl Sugar Syrup\n• 1 Egg White",
+    "tasteProfiles": [
+      "Sweet",
+      "Sour"
+    ]
+  }
+]

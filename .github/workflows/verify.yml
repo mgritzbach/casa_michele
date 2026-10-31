@@ -1,0 +1,77 @@
+name: Verify web and Android
+on:
+  pull_request:
+  push:
+    branches: [main, CDX/casa-android-v4]
+concurrency:
+  group: verify-${{ github.ref }}
+  cancel-in-progress: true
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci
+      - run: npm run verify
+      - run: npm audit --audit-level=moderate
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - uses: android-actions/setup-android@v3
+        with:
+          packages: 'platform-tools'
+      - run: npx cap sync android
+      - run: bash android/gradlew -p android testDebugUnitTest assembleDebug
+      - uses: actions/upload-artifact@v4
+        with:
+          name: verified-web-build
+          path: dist/
+      # CI debug signing keys are ephemeral. Distribute only a build signed by
+      # the owner's stable key, whose SHA-256 is in assetlinks.json.
+  android-runtime:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - run: npm ci
+      - run: npm run android:sync
+      - name: Build a newer signed APK fixture for update verification
+        run: |
+          bash android/gradlew -p android :app:assembleDebug -PsideBySide=true -PupdateTestVersionCode=999 --console=plain
+          mkdir -p android/app/src/androidTest/assets
+          cp android/app/build/outputs/apk/debug/app-debug.apk android/app/src/androidTest/assets/update-fixture.apk
+      - name: Enable acceleration for the disposable emulator
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          arch: x86_64
+          profile: pixel_5
+          disable-animations: true
+          script: bash android/gradlew -p android :app:connectedDebugAndroidTest -PsideBySide=true --console=plain || { adb logcat -d > android-runtime-logcat.txt; exit 1; }
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: android-runtime-results
+          path: |
+            android-runtime-logcat.txt
+            android/app/build/reports/androidTests/
+            android/app/build/outputs/androidTest-results/
