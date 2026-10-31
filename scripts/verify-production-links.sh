@@ -3,7 +3,7 @@ set -euo pipefail
 mkdir -p production-link-results
 package=com.casamichele.app.preview
 domain=casa-michele.mic-gritzbach.workers.dev
-adb install CasaMichele-v5.0.0-preview.apk
+adb install CasaMichele-v5.1.1-preview.apk
 adb shell pm verify-app-links --re-verify "$package"
 # Wait for Android's own verifier. Never force an approved/verified state.
 for attempt in $(seq 1 36); do

@@ -23,7 +23,12 @@ const event = 'S' + Date.now().toString(36).toUpperCase();
     await fs.writeFile(`${output}/accessibility.json`, JSON.stringify(accessibility, null, 2));
     assert.deepEqual(accessibility.at(-1).violations, []);
   };
-  for (const page of [bar, guest]) page.on('pageerror', error => failures.push(error.message));
+  for (const page of [bar, guest]) {
+    page.on('pageerror', error => failures.push(error.message));
+    // Precaching can finish during any action on a remote preview.
+    const notice = page.getByRole('button', { name: 'Dismiss', exact: true });
+    await page.addLocatorHandler(notice, () => notice.click());
+  }
   const policy = () => bar.getByRole('button', { name: 'Allow out-of-stock drinks for guests to order', exact: true });
   const dismiss = async page => { const button = page.getByRole('button', { name: 'Dismiss', exact: true }); if (await button.isVisible()) await button.click(); };
   const synced = async () => bar.getByText('Everything is synced', { exact: true }).waitFor({ timeout: 20000 });

@@ -17,8 +17,8 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release download v5.0.0-preview --repo "$GITHUB_REPOSITORY" --pattern CasaMichele-v5.0.0-preview.apk
-          echo '0f3ca8044c81812d5e1ff54f5f1e0aee8219d330a3caebfd1c6009a8670e2cdd  CasaMichele-v5.0.0-preview.apk' | sha256sum --check
+          gh release download v5.1.1-preview --repo "$GITHUB_REPOSITORY" --pattern CasaMichele-v5.1.1-preview.apk
+          echo '7502b8cea4bb79f85acfbf40ee7a851b888ece37429094c06c906c19abf28067  CasaMichele-v5.1.1-preview.apk' | sha256sum --check
       - name: Enable acceleration for the disposable emulator
         run: |
           echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
