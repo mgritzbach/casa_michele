@@ -16,9 +16,11 @@ const event = 'S' + Date.now().toString(36).toUpperCase();
   const failures = [];
   const accessibility = [];
   const audit = async (page, screen) => {
-    await page.addScriptTag({ path: require.resolve('axe-core/axe.min.js', { paths: [process.cwd()] }) });
+    // Inject through the test driver so the app's strict CSP remains enabled.
+    await page.evaluate(await fs.readFile(require.resolve('axe-core/axe.min.js', { paths: [process.cwd()] }), 'utf8'));
     const result = await page.evaluate(async () => window.axe.run(document, { runOnly: { type: 'tag', values: ['wcag2a', 'wcag2aa', 'wcag21aa'] } }));
-    accessibility.push({ screen, violations: result.violations.map(v => ({ id: v.id, impact: v.impact, description: v.description })), passes: result.passes.length });
+    accessibility.push({ screen, violations: result.violations.map(v => ({ id: v.id, impact: v.impact, description: v.description, nodes: v.nodes.map(n => ({ target: n.target, summary: n.failureSummary })) })), passes: result.passes.length });
+    await fs.writeFile(`${output}/accessibility.json`, JSON.stringify(accessibility, null, 2));
     assert.deepEqual(accessibility.at(-1).violations, []);
   };
   for (const page of [bar, guest]) page.on('pageerror', error => failures.push(error.message));

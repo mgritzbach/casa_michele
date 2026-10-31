@@ -813,7 +813,7 @@ const App: React.FC = () => {
                   }`}>
                     {availability[ing] ? <X size={14} className="shrink-0" /> : <Check size={14} className="text-emerald-500 shrink-0" />}
                     <span className="font-medium">{ing}</span>
-                    {availability[ing] && <span className="ml-auto text-[11px] font-semibold uppercase text-red-500/70">Out</span>}
+                    {availability[ing] && <span className="ml-auto text-[11px] font-semibold uppercase text-red-300">Out</span>}
                   </div>
                 ))}
               </div>
