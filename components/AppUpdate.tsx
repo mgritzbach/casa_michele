@@ -1,7 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Capacitor } from '@capacitor/core';
 import { App } from '@capacitor/app';
-import { registerSW } from 'virtual:pwa-register';
 import { Download } from 'lucide-react';
 import { BottomSheet, Button } from './UI';
 import { APP_VERSION, AppRelease, checkGithubRelease, compareVersions, NativeUpdater, openUpdates, RELEASES_URL } from '../services/updates';
@@ -22,16 +21,27 @@ export function AppUpdate() {
   const [error, setError] = useState('');
   const [installedVersion, setInstalledVersion] = useState(APP_VERSION);
   const registration = useRef<ServiceWorkerRegistration | undefined>(undefined);
-  const apply = useRef<((reload?: boolean) => Promise<void>) | undefined>(undefined);
   const checking = useRef(false);
   useEffect(() => {
     if (native) return;
-    apply.current = registerSW({
-      onOfflineReady: () => setNotice('Menu and photos are ready for offline bartender use.'),
-      onNeedRefresh: () => { setAvailable(true); setDismissed(false); },
-      onRegistered: value => { registration.current = value; },
-      onRegisterError: () => setNotice('Offline download did not finish. Reopen while connected to try again.'),
-    });
+    let disposed = false;
+    if (!('serviceWorker' in navigator)) return;
+    void navigator.serviceWorker.register('/sw.js', { updateViaCache: 'none' }).then(worker => {
+      if (disposed) return;
+      registration.current = worker;
+      const ready = () => { if (!disposed) { setAvailable(true); setDismissed(false); } };
+      if (worker.waiting) ready();
+      const track = () => {
+        const installing = worker.installing;
+        installing?.addEventListener('statechange', () => {
+          if (disposed || installing.state !== 'installed') return;
+          if (navigator.serviceWorker.controller) ready();
+          else setNotice('Menu and photos are ready for offline bartender use.');
+        });
+      };
+      track(); worker.addEventListener('updatefound', track);
+    }).catch(() => { if (!disposed) setNotice('Offline download did not finish. Reopen while connected to try again.'); });
+    return () => { disposed = true; };
   }, [native]);
   const check = async () => {
     if (checking.current) return;
@@ -69,7 +79,19 @@ export function AppUpdate() {
       if (native && release) {
         const result = await NativeUpdater.install({ url: release.downloadUrl, sha256: release.sha256 });
         setMessage(result.status === 'permission' ? 'Allow Casa Michele to install updates in Android settings, then return here and tap Download and install again.' : 'Confirm the update in Android. If you cancelled, you can tap Download and install again.');
-      } else if (apply.current) await apply.current(true);
+      } else {
+        const worker = registration.current || await navigator.serviceWorker.getRegistration();
+        if (!worker) throw new Error('No web update is ready. Check again while connected.');
+        if (worker.waiting) {
+          await new Promise<void>((resolve, reject) => {
+            const changed = () => { clearTimeout(timer); navigator.serviceWorker.removeEventListener('controllerchange', changed); resolve(); };
+            const timer = window.setTimeout(() => { navigator.serviceWorker.removeEventListener('controllerchange', changed); reject(new Error('The update did not activate. Please try again.')); }, 20000);
+            navigator.serviceWorker.addEventListener('controllerchange', changed);
+            worker.waiting!.postMessage({ type: 'SKIP_WAITING' });
+          });
+        }
+        window.location.reload();
+      }
     } catch (e) { setError((e as Error).message || 'The update could not be installed. Please try again.'); }
     finally { setInstalling(false); }
   };

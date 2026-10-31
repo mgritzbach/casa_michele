@@ -52,7 +52,8 @@ public class UpdatePackageTest {
             assertTrue("Android update confirmation did not open", confirmation);
         } finally {
             shell("input keyevent 4");
-            shell("appops set " + context.getPackageName() + " REQUEST_INSTALL_PACKAGES default");
+            // Revoking this app-op kills the instrumented process on Android 15.
+            // Gradle uninstalls the test app and the disposable emulator is destroyed.
             fixture.delete();
         }
     }
