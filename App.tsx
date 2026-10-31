@@ -38,6 +38,8 @@ import bundledMenu from './data/menu.json';
 import { useEventSync } from './hooks/useEventSync';
 import { useConnectivity } from './hooks/useConnectivity';
 import { Welcome } from './components/Welcome';
+import { UpdateButton } from './components/AppUpdate';
+import { APP_VERSION } from './services/updates';
 import { GuestEntry } from './components/GuestEntry';
 import { SyncStatus } from './components/SyncStatus';
 import { eventJoinUrl, eventCodeFromUrl, normalizeEventCode } from './services/links';
@@ -74,7 +76,7 @@ const playOrderChime = () => {
 };
 
 // ── Constants ──────────────────────────────────────
-const VERSION = 'v5.1.1';
+const VERSION = `v${APP_VERSION}`;
 const SESSION_STORAGE_KEY = 'casa_michele_session_v1';
 
 const INGREDIENT_CATEGORIES = ['Spirit', 'Liqueur', 'Juice', 'Syrup', 'Bitter', 'Other'];
@@ -315,6 +317,7 @@ const App: React.FC = () => {
   useEffect(() => {
     if (!Capacitor.isNativePlatform()) return;
     const listener = CapacitorApp.addListener('backButton', () => {
+      if (!window.dispatchEvent(new Event('casa:back', { cancelable: true }))) return;
       if (isConfirmingOrder) {
         setIsConfirmingOrder(false);
       } else if (selectedCocktail) {
@@ -580,12 +583,12 @@ const App: React.FC = () => {
             <span className={`w-2 h-2 rounded-full ${connectionState === 'online' ? 'bg-emerald-500' : connectionState === 'offline' ? 'bg-red-500' : 'bg-amber-500'} ${connectionState !== 'offline' ? '' : ''}`} />
             <span className="text-xs font-medium text-zinc-300 tracking-wide">Event {session.eventCode}</span>
           </div>
-          <button
+          <div className="flex items-center gap-2"><UpdateButton compact /><button
             onClick={handleExit}
             className="px-3.5 py-1.5 bg-zinc-800/60 rounded-xl text-zinc-400 text-xs font-semibold hover:text-white transition-colors"
           >
             Exit
-          </button>
+          </button></div>
         </header>
 
         {/* Last order banner */}
@@ -861,7 +864,7 @@ const App: React.FC = () => {
     return (
       <div className="app-shell min-h-screen bg-zinc-950 flex flex-col">
         {/* Header */}
-        <header className="px-5 py-3.5 glass border-b border-zinc-800/40 flex justify-between items-center sticky top-0 z-40">
+        <header className="px-5 py-3.5 glass border-b border-zinc-800/40 flex flex-wrap gap-2 justify-between items-center sticky top-0 z-40">
           <div className="flex items-center gap-3">
             <div className="w-9 h-9 bg-amber-500 rounded-xl flex items-center justify-center text-zinc-950 ">
               <Wine size={17} strokeWidth={2.5} />
@@ -871,7 +874,8 @@ const App: React.FC = () => {
               <p className={`text-xs font-medium mt-0.5 text-zinc-400`}>{session.eventCode} · Bar workspace</p>
             </div>
           </div>
-          <div className="flex gap-1.5">
+          <div className="flex gap-1">
+            <UpdateButton compact />
             <button aria-label="Share event QR code" onClick={() => setShowQrCode(true)} className="w-11 h-11 flex items-center justify-center rounded-xl bg-zinc-800/60 text-zinc-400 hover:text-white transition-colors active:scale-95">
               <QrCode size={17} />
             </button>

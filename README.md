@@ -6,6 +6,32 @@ including when the internet is unavailable.
 
 Production URL: https://casa-michele.mic-gritzbach.workers.dev
 
+## Updates in v5.2
+
+Use **Check for updates** on the welcome screen or the download icon in the
+bartender and guest headers. Android checks published GitHub releases for its
+installed package, including preview releases. **Download and install** verifies
+the SHA-256 checksum, package, signing certificate and newer version code before
+opening Android's confirmation screen. Android may first ask you to allow this
+app to install updates. Return to Casa Michele and tap the button again after
+allowing it. Saved bar data is preserved.
+
+Install v5.2 once using its APK to get this updater. Future versions can use the
+button. Updates require internet; checks never block offline bartender work.
+Updates and restarts happen only when requested.
+
+The web button checks GitHub and the deployed service worker. A GitHub release
+alone does not deploy the website. Once the website is deployed, **Install web
+update** reloads the app with the new version and retains saved changes.
+
+Release maintainers must increment the package version and Android versionCode,
+sign with the same key, and upload `CasaMichele-vX.Y.Z-preview.apk` to the published
+`vX.Y.Z-preview` release. GitHub provides the asset SHA-256. Draft releases and
+unfinished or incompatible assets are ignored. Keep the preview and normal
+package channels separate. This direct APK updater is for sideload distribution.
+The CI `updateTestVersionCode` override is only for disposable test fixtures;
+never publish that fixture.
+
 ## Stock controls in v5.1
 
 In **Recipes**, drinks missing stock have a red border and list the missing

@@ -58,6 +58,8 @@ public class OfflineWorkspaceTest {
         try {
             scenario = ActivityScenario.launch(MainActivity.class);
             click("Bartender access");
+            js("window.Capacitor.Plugins.CasaUpdater.install({url:'https://example.com/update.apk',sha256:'a'.repeat(64)}).then(() => window.badUpdateAccepted = true).catch(e => window.updateRejected = e.message)");
+            waitFor("window.updateRejected?.includes('verified Casa Michele GitHub release')");
             click("Start a local offline bar");
             waitFor("document.body.innerText.includes('Local bar on this device')");
             click("Recipes");

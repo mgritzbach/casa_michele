@@ -10,6 +10,7 @@ lerna-debug.log*
 android/.gradle/
 android/build/
 android/app/build/
+android/app/src/androidTest/assets/update-fixture.apk
 android/app/src/main/assets/
 android/app/src/main/res/xml/config.xml
 android/capacitor-cordova-android-plugins/

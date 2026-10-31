@@ -50,6 +50,11 @@ jobs:
           java-version: '21'
       - run: npm ci
       - run: npm run android:sync
+      - name: Build a newer signed APK fixture for update verification
+        run: |
+          bash android/gradlew -p android :app:assembleDebug -PsideBySide=true -PupdateTestVersionCode=999 --console=plain
+          mkdir -p android/app/src/androidTest/assets
+          cp android/app/build/outputs/apk/debug/app-debug.apk android/app/src/androidTest/assets/update-fixture.apk
       - name: Enable acceleration for the disposable emulator
         run: |
           echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules

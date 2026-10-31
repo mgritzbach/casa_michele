@@ -1,5 +1,6 @@
 import React from 'react';
 import { ArrowUpRight, Wine, Lock } from 'lucide-react';
+import { UpdateButton } from './AppUpdate';
 
 export function Welcome({ onGuest, onBartender, version }: { onGuest: () => void; onBartender: () => void; version: string }) {
   return <main className="welcome">
@@ -18,6 +19,6 @@ export function Welcome({ onGuest, onBartender, version }: { onGuest: () => void
         <figcaption><span className="eyebrow">FROM THE MENU</span><span>Negroni</span><span className="text-sm text-zinc-400">Gin · Campari · Vermouth</span></figcaption>
       </figure>
     </div>
-    <footer className="welcome-footer"><span>Casa Michele</span><span>{version}</span></footer>
+    <footer className="welcome-footer items-center"><UpdateButton /><span>{version}</span></footer>
   </main>;
 }
